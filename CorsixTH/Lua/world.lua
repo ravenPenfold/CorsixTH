@@ -287,7 +287,7 @@ function World:initLevel(app, avail_rooms)
       end
     end
   end
-  if #self.available_diseases == 0 and not self.map.level_number == "MAP EDITOR" then
+  if #self.available_diseases == 0 and self.map.level_number ~= "MAP EDITOR" then
     -- No diseases are needed if we're actually in the map editor!
     print("Warning: This level does not contain any diseases")
   end
@@ -1254,16 +1254,19 @@ end
 
 -- Called when a month ends. Decides on which dates patients arrive
 -- during the coming month.
+-- TODO: Requires adjustment for AIHospital spawns; see PR 1986 for progress.
 function World:updateSpawnDates()
   local local_hospital = self:getLocalPlayerHospital()
   -- Set dates when people arrive
   local no_of_spawns = math.n_random(self.spawn_rate, 2)
-  -- If Roujin's Challenge is on, override spawn rate
-  if local_hospital.hosp_cheats:isCheatActive("spawn_rate_cheat") then
-    no_of_spawns = 40
-  end
   -- Use ceil so that at least one patient arrives (unless population = 0)
   no_of_spawns = math.ceil(no_of_spawns*self:getLocalPlayerHospital().population)
+  -- If Roujin's Challenge is on, add a fixed bonus to the spawn pool for this player.
+  if local_hospital.hosp_cheats:isCheatActive("spawn_rate_cheat") then
+    local roujin_bonus = 40
+    no_of_spawns = no_of_spawns + roujin_bonus
+  end
+
   self.spawn_dates = {}
   for _ = 1, no_of_spawns do
     -- We are interested in the next month, pick days from it at random.
@@ -2333,13 +2336,11 @@ end
 --! Dump the contents of the game log into a file.
 -- This is automatically done on each error.
 function World:dumpGameLog()
-  local config_path = TheApp.command_line["config-file"] or ""
-  local pathsep = package.config:sub(1, 1)
-  config_path = config_path:match("^(.-)[^" .. pathsep .. "]*$")
-  local gamelog_path = config_path .. "gamelog.txt"
+  local gamelog_path = TheApp:getGamelogPath()
   local fi = self.app:writeToFileOrTmp(gamelog_path)
   -- Start the gamelog file with the system information
-  fi:write(self.app:getSystemInfo())
+  local sysinfo = TheApp:gamelogHeader()
+  fi:write(sysinfo)
   for _, str in ipairs(self.game_log) do
     fi:write(str .. "\n")
   end

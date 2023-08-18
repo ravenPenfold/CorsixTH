@@ -1050,7 +1050,7 @@ function UIEditRoom:onMouseUp(button, x, y)
   return UIPlaceObjects.onMouseUp(self, button, x, y)
 end
 
-function UIEditRoom:onMouseMove(x, y, ...)
+function UIEditRoom:onMouseMove(x, y, dx, dy)
   if self.in_pickup_mode then
     self.ui:setCursor(self.ui.app.gfx:loadMainCursor("grab"))
   end
@@ -1555,11 +1555,9 @@ function UIEditRoom:placeObject()
 end
 
 function UIEditRoom:afterLoad(old, new)
-  if old < 171 then
-    self.wall_types = TheApp.walls
-    self:initWallTypes()
-  end
   if old < 172 then
+    -- reverts change in 171 where walls were moved into edit_room, its original
+    -- afterload was removed due to crashes
     self.wall_types = nil
     self.wall_id_by_block_id = nil
     self.wall_set_by_block_id = nil
