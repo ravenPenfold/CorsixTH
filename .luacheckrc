@@ -29,14 +29,14 @@ globals = { -- Globals
             "permanent", "print_table", "rangeMapLookup", "rnc",
             "strict_declare_global", "table_length", "unpermanent", "values",
             "serialize", "array_join", "shallow_clone", "staff_initials_cache",
-            "hasBit", "bitOr",
+            "hasBit", "bitOr", "inspect",
 
             -- Game classes
             "AIHospital", "AnimationManager", "AnimationEffect", "App", "Audio",
             "CallsDispatcher", "Cheats", "ChildClass", "Command", "Door", "DrawFlags",
-            "DummyRootNode", "Entity", "EntityMap", "Epidemic", "FileSystem",
-            "FileTreeNode", "FilteredFileTreeNode", "GameUI", "Graphics",
-            "GrimReaper", "Hospital", "Humanoid", "HumanoidRawWalk",
+            "DummyRootNode", "Earthquake", "EndConditions", "Entity", "EntityMap",
+            "Epidemic", "FileSystem", "FileTreeNode", "FilteredFileTreeNode", "GameUI",
+            "Graphics", "GrimReaper", "Hospital", "Humanoid", "HumanoidRawWalk",
             "Inspector", "LoadGame", "LoadGameFile", "Litter", "Machine",
             "Map", "MoviePlayer", "NoRealClass", "Object", "ParentClass",
             "Patient", "Plant", "PlayerHospital", "Queue", "ResearchDepartment", "Room",
@@ -110,8 +110,8 @@ end
 -- W314: value assigned to field XYZ is unused
 for _, lng in ipairs({"brazilian_portuguese", "czech", "danish", "developer",
     "dutch", "english", "finnish", "french", "german", "greek", "hungarian",
-    "iberic_portuguese", "italian", "korean", "norwegian", "original_strings",
-    "polish", "russian", "simplified_chinese", "spanish", "swedish",
+    "iberic_portuguese", "italian", "japanese", "korean", "norwegian", "original_strings",
+    "polish", "russian", "simplified_chinese", "spanish", "swedish", "ukrainian",
     "traditional_chinese"}) do
   local filename = "CorsixTH/Lua/languages/" .. lng .. ".lua"
   add_ignore(filename, "111")

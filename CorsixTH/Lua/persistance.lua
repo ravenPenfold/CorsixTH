@@ -152,7 +152,7 @@ local function MakePermanentObjectsTable(inverted)
   end
   permanent[menu_bar] = "TheApp.ui.menu_bar"
 
-  -- Graphics bits are persisted as instructions to reload them or re-use if already loaded
+  -- Graphics bits are persisted as instructions to reload them or reuse if already loaded
   if inverted then
     -- as the object was persisted as a table, we need to add some magic to
     -- the __index metamethod to interpret this table as a function call
@@ -313,7 +313,7 @@ function LoadGame(data)
   TheApp.ui:onChangeResolution()
   -- Check if the blueish tone should be applied.
   -- Note: Blue filter control should be handled from world or ui, however when
-  -- loading a game we should let persistance do it.
+  -- loading a game we should let persistence do it.
   if not TheApp.ui:checkForMustPauseWindows() and TheApp.world:isUserActionProhibited() then
     TheApp.video:setBlueFilterActive(true)
   end

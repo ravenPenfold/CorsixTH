@@ -503,7 +503,7 @@ function CallsDispatcher.getPriorityForRoom(room, attribute, staff)
     score = score + distance
   end
 
-  -- More people on the queue has to be served eariler
+  -- More people on the queue has to be served earlier
   if room.door.queue then
     score = score - room.door.queue:reportedSize() * 5 -- 5 is just a weighting scale
     if room.door.queue:hasEmergencyPatient() then
@@ -512,7 +512,7 @@ function CallsDispatcher.getPriorityForRoom(room, attribute, staff)
   end
 
   -- Prefer the tirer staff (such that less chance to have "resting synchronization issue")
-  score = score - staff.attributes["fatigue"] * 40 -- 40 is just a weighting scale
+  score = score - staff:getAttribute("fatigue") * 40 -- 40 is just a weighting scale
 
   -- TODO: Assign doctor with higher ability
 

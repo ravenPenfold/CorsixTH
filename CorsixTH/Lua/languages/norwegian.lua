@@ -62,7 +62,7 @@ because the letters ø and Ø is not included in the original ingame-font.
 --   SECTION A - NEW STRINGS
 -------------------------------------------------------------------------------
 
--- 1. Global setings (do not edit!)
+-- 1. Global settings (do not edit!)
 --Font("unicode") --todo: Add unicode/freefont
 Language("Norsk", "Norwegian", "nb", "nob")
 Inherit("english")
@@ -2693,16 +2693,16 @@ humanoid_name_ends = {
 -- VIP names
 vip_names = {
   health_minister = "Helseministeren",
-  "Ordföreren i Greater Trumpton", -- the rest is better organized in an array.
-  "Lawrence Nightingale",
-  "Kong Bernard av Nederland",
-  "Aung Sang Su Kyi, den Burmesisk Demokratiske Opposisjonslederen",
-  "Sir Reginald Crumbly",
-  "Billy Savile OBE",
-  "Rådgiver Crawford Purves",
-  "Rocket Ronnie Jepson",
-  "En Fotballspiller i Eliteserien",
-  "L. F. Probst, III",
+  [1] = "Ordföreren i Greater Trumpton", -- the rest is better organized in an array.
+  [2] = "Lawrence Nightingale",
+  [3] = "Kong Bernard av Nederland",
+  [4] = "Aung Sang Su Kyi, den Burmesisk Demokratiske Opposisjonslederen",
+  [5] = "Sir Reginald Crumbly",
+  -- [6] requires replacement (English uses 'Sir Lancelot Spratt')
+  [7] = "Rådgiver Crawford Purves",
+  [8] = "Rocket Ronnie Jepson",
+  [9] = "En Fotballspiller i Eliteserien",
+  [10] = "L. F. Probst, III",
 }
 
 -- Deseases

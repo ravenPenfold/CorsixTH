@@ -43,7 +43,7 @@ SOFTWARE.
 #if SDL_VERSION_ATLEAST(2, 0, 10)
 
 //! How much to overdraw scaled sprites to ensure no gaps are visible.
-const float frect_overdraw = 0.002f;
+const float frect_overdraw = 0.01f;
 
 #define SDL_FRECT_UNIT float
 #else
@@ -183,8 +183,8 @@ void getScaleRect(const SDL_Rect* rect, double scale_factor,
   // on scaled rendering.
   dst_rect->x = static_cast<float>(rect->x * scale_factor) - frect_overdraw;
   dst_rect->y = static_cast<float>(rect->y * scale_factor) - frect_overdraw;
-  dst_rect->w = static_cast<float>(rect->w * scale_factor) + frect_overdraw;
-  dst_rect->h = static_cast<float>(rect->h * scale_factor) + frect_overdraw;
+  dst_rect->w = static_cast<float>(rect->w * scale_factor) + 2 * frect_overdraw;
+  dst_rect->h = static_cast<float>(rect->h * scale_factor) + 2 * frect_overdraw;
 #else
   // Prior to SDL 2.0.10, fallback to using the enclosing integer SDL_Rect for
   // scaled rendering.
@@ -420,7 +420,7 @@ class render_target::scoped_target_texture
     } else {
       target->draw(texture, nullptr, &rect, 0);
     }
-    SDL_DestroyTexture(texture);
+    target->intermediate_textures.push_back(texture);
   }
 
  private:
@@ -474,6 +474,7 @@ bool render_target::create(const render_target_creation_params* pParams) {
   apply_opengl_clip_fix = std::strncmp(info.name, "opengl", 6) == 0 &&
                           sdlVersion.major == 2 && sdlVersion.minor == 0 &&
                           sdlVersion.patch < 4;
+  SDL_SetWindowMinimumSize(window, 640, 480);
 
   return update(pParams);
 }
@@ -508,6 +509,7 @@ bool render_target::update(const render_target_creation_params* pParams) {
 
 void render_target::destroy() {
   zoom_buffer.reset();
+  destroy_intermediate_textures();
 
   if (pixel_format) {
     SDL_FreeFormat(pixel_format);
@@ -587,6 +589,9 @@ const char* render_target::get_renderer_details() const {
 const char* render_target::get_last_error() { return SDL_GetError(); }
 
 bool render_target::start_frame() {
+  // Destroy any intermediate texures used last frame.
+  destroy_intermediate_textures();
+
   fill_black();
   return true;
 }
@@ -895,6 +900,13 @@ double render_target::draw_scale() const {
   return global_scale_factor;
 }
 
+void render_target::destroy_intermediate_textures() {
+  for (SDL_Texture* texture : intermediate_textures) {
+    SDL_DestroyTexture(texture);
+  }
+  intermediate_textures.clear();
+}
+
 raw_bitmap::raw_bitmap() {
   texture = nullptr;
   bitmap_palette = nullptr;
@@ -1192,12 +1204,24 @@ bool sprite_sheet::get_sprite_average_colour(size_t iSprite,
     uint8_t cPalIndex = pSprite->data[i];
     uint32_t iColour = palette->get_argb_data()[cPalIndex];
     if ((iColour >> 24) == 0) continue;
+
+    // - Convert from nonlinear RGB to linear RGB.
+    //   gamma = around 2.2 but depends on the screen.
+    //   R, G and B are fractions.
+    const double gamma = 2.2;
+    double linR = std::pow(palette::get_red(iColour) / 255.0, gamma);
+    double linG = std::pow(palette::get_green(iColour) / 255.0, gamma);
+    double linB = std::pow(palette::get_blue(iColour) / 255.0, gamma);
+    // - Compute luminance Y in XYZ space.
+    //   Y = .2126 * R^gamma + .7152 * G^gamma + .0722 * B^gamma
+    double Y = 0.2126 * linR + 0.7152 * linG + 0.0722 * linB;
+    // - Compute lightness L*.
+    //   L* = 116 * Y ^ 1/3 - 16, range is from 0 to 100.
+    double L = std::min(100.0, std::max(0.0, 166 * std::cbrt(Y) - 16));
+    uint8_t cIntensity = static_cast<uint8_t>(L / 100 * 255.0);
+
     // Grant higher score to pixels with high or low intensity (helps avoid
     // grey fonts)
-    int iR = palette::get_red(iColour);
-    int iG = palette::get_green(iColour);
-    int iB = palette::get_blue(iColour);
-    uint8_t cIntensity = static_cast<uint8_t>((iR + iG + iB) / 3);
     int iScore = 1 + std::max(0, 3 - ((255 - cIntensity) / 32)) +
                  std::max(0, 3 - (cIntensity / 32));
     iUsageCounts[cPalIndex] += iScore;

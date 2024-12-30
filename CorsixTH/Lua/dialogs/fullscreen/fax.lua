@@ -179,8 +179,6 @@ function UIFax:choice(choice_number)
   if choice == "accept_emergency" then
     self.ui.app.world:newObject("helicopter", "north")
     self.ui:addWindow(UIWatch(self.ui, "emergency"))
-    self.ui:playAnnouncement(self.ui.hospital.emergency.disease.emergency_sound, AnnouncementPriority.Critical)
-    self.ui.adviser:say(_A.information.emergency)
   elseif choice == "refuse_emergency" then
     self.ui.app.world:nextEmergency()
   -- VIP may choose to visit anyway if he is refused too often
@@ -209,16 +207,23 @@ function UIFax:choice(choice_number)
     self.ui.hospital.player_salary = self.ui.hospital.salary_offer
     if tonumber(self.ui.app.world.map.level_number) then
       local next_level = self.ui.app.world.map.level_number + 1
-      self.ui.app:loadLevel(next_level, self.ui.app.map.difficulty)
-      self.ui.app.moviePlayer:playAdvanceMovie(next_level)
+      if self.ui.app:loadLevel(next_level, self.ui.app.map.difficulty, nil, nil,
+          nil, nil, _S.errors.load_level_prefix) then
+        self.ui.app.moviePlayer:playAdvanceMovie(next_level)
+      end
     else
-      for i, level in ipairs(self.ui.app.world.campaign_info.levels) do
+      local campaign_info = self.ui.app.world.campaign_info
+      for i, level in ipairs(campaign_info.levels) do
         if self.ui.app.world.map.level_number == level then
-          local next_level = self.ui.app.world.campaign_info.levels[i + 1]
+          local next_level = campaign_info.levels[i + 1]
           local level_info, _ = self.ui.app:readLevelFile(next_level)
           if level_info then
             self.ui.app:loadLevel(next_level, nil, level_info.name,
-                     level_info.map_file, level_info.briefing)
+                level_info.map_file, level_info.briefing, nil, _S.errors.load_level_prefix, self.ui.app.world.campaign_info)
+            if campaign_info.movie then
+              local n = math.max(1, 12 - #campaign_info.levels + i)
+              self.ui.app.moviePlayer:playAdvanceMovie(n)
+            end
             break
           end
         end

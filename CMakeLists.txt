@@ -5,6 +5,7 @@
 #   - WITH_FREETYPE2  : Active support for non-Latin script alphabets (yes)
 #   - WITH_MOVIES     : Activate movies (requires with_audio, FFmpeg) (yes)
 #   - WITH_LUAJIT     : Use LuaJIT instead of Lua (must specify library path) (no)
+#   - WITH_UPDATE_CHECK : Activates support to check for new version on launch (requires libcurl) (yes)
 #   - USE_SOURCE_DATADIRS : Use the source directory for loading resources. Incompatible with the install target (no)
 #   - SEARCH_LOCAL_DATADIRS : Search resources in the working directory and the
 #       program directory where the executable stores. Makes the executable
@@ -12,23 +13,45 @@
 
 #   - WITH_VLD        : Build with Visual Leak Detector (requires Visual Studio) (no)
 #   - USE_PRECOMPILED_DEPS : Use precompiled dependencies on *nix (no)
-#   - USE_VCPKG_DEPS : Build vcpkg dependencies locally (requires Visual Studio) (no)
 #   - WITH_LUAROCKS : Install required luarocks in the macOS app (requires luarocks)
 
 #   - ENABLE_UNIT_TESTS : Enable Unit Testing Target (requires Catch2) (no)
-#   - BUILD_ANIMVIEW : Generate AnimViewer build files (no)
+#   - BUILD_ANIMVIEW : Generate AnimView build files (no)
 #   - BUILD_TOOLS : Generate cli tools
 
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
+
+# Define our options
+option(BUILD_CORSIXTH "Builds the main game" ON)
+option(WITH_AUDIO "Activate sound" ON)
+option(WITH_FREETYPE2 "Enhanced font support" ON)
+option(WITH_MOVIES "Activate in game movies" ON)
+option(WITH_LUAJIT "Use LuaJIT instead of Lua" OFF)
+option(WITH_UPDATE_CHECK "Check for new versions" ON)
+option(USE_SOURCE_DATADIRS "Use the source directory for loading resources. Incompatible with the install target" OFF)
+option(ENABLE_UNIT_TESTS "Enables Unit Testing Targets" OFF)
+option(BUILD_ANIMVIEW "Build the animation viewer as part of the build process" OFF)
+option(BUILD_TOOLS "Build additional CLI tools (rnc_decode)" OFF)
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/CMake)
 
-option(USE_VCPKG_DEPS "Build vcpkg dependencies locally" OFF)
-
-if(USE_VCPKG_DEPS)
-  # This must be before the project for the tool-chain to work correctly
-  message("Note: Using locally built vcpkg dependencies.")
-  include(VcpkgDeps)
+if(WITH_FREETYPE2)
+  list(APPEND VCPKG_MANIFEST_FEATURES "freetype")
+endif()
+if(WITH_AUDIO)
+  list(APPEND VCPKG_MANIFEST_FEATURES "audio")
+  if(WITH_MOVIES)
+    list(APPEND VCPKG_MANIFEST_FEATURES "movies")
+  endif()
+endif()
+if(BUILD_ANIMVIEW)
+  list(APPEND VCPKG_MANIFEST_FEATURES "animview")
+endif()
+if(WITH_UPDATE_CHECK)
+  list(APPEND VCPKG_MANIFEST_FEATURES "updatecheck")
+endif()
+if(ENABLE_UNIT_TESTS)
+  list(APPEND VCPKG_MANIFEST_FEATURES "catch2")
 endif()
 
 project(CorsixTH_Top_Level)
@@ -40,14 +63,6 @@ endif()
 include(CheckIncludeFiles)
 
 set(CORSIX_TH_DONE_TOP_LEVEL_CMAKE ON)
-
-# Define our options
-option(BUILD_CORSIXTH "Builds the main game" ON)
-option(WITH_AUDIO "Activate sound" ON)
-option(WITH_FREETYPE2 "Enhanced font support" ON)
-option(WITH_MOVIES "Activate in game movies" ON)
-option(WITH_LUAJIT "Use LuaJIT instead of Lua" OFF)
-option(USE_SOURCE_DATADIRS "Use the source directory for loading resources. Incompatible with the install target" OFF)
 
 if(APPLE)
   set(SEARCH_LOCAL_DATADIRS_DEFAULT ON)
@@ -70,10 +85,6 @@ endif()
 if(APPLE)
   option(WITH_LUAROCKS "Install required luarocks in the app" OFF)
 endif()
-
-option(ENABLE_UNIT_TESTS "Enables Unit Testing Targets" OFF)
-option(BUILD_ANIMVIEW "Build the animation viewer as part of the build process" OFF)
-option(BUILD_TOOLS "Build additional CLI tools (rnc_decode)" OFF)
 
 if(WITH_AUDIO)
   set(CORSIX_TH_USE_SDL_MIXER ON)
@@ -102,6 +113,18 @@ if(WITH_FREETYPE2)
 else()
   set(CORSIX_TH_USE_FREETYPE2 OFF)
   message("Note: FreeType2 is disabled")
+endif()
+
+if(WITH_UPDATE_CHECK)
+  message("Note: Update check is enabled (default)")
+else()
+  message("Note: Update check is disabled")
+endif()
+
+if(VCPKG_TARGET_TRIPLET AND NOT WITH_LUAROCKS)
+  set(CORSIX_TH_LINK_LUA_MODULES ON)
+else()
+  set(CORSIX_TH_LINK_LUA_MODULES OFF)
 endif()
 
 if(MSVC)

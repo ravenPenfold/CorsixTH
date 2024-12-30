@@ -107,6 +107,7 @@ local config_defaults = {
   music_volume = 0.5,
   prevent_edge_scrolling = false,
   capture_mouse = true,
+  right_mouse_scrolling = false,
   adviser_disabled = false,
   scrolling_momentum = 0.8,
   twentyfour_hour_clock = true,
@@ -128,12 +129,6 @@ local config_defaults = {
   audio_buffer_size = 2048,
   theme_hospital_install = [[X:\ThemeHospital\hospital]],
   debug = false,
-  DBGp_client_idehost = nil,
-  DBGp_client_ideport = nil,
-  DBGp_client_idekey = nil,
-  DBGp_client_transport = nil,
-  DBGp_client_platform = nil,
-  DBGp_client_workingdir = nil,
   track_fps = false,
   zoom_speed = 80,
   scroll_speed = 2,
@@ -145,6 +140,7 @@ local config_defaults = {
   allow_blocking_off_areas = false,
   direct_zoom = nil,
   new_machine_extra_info = true,
+  debug_falling = false,
   player_name = [[]],
 }
 
@@ -226,6 +222,7 @@ local string_01 = [=[
 --  German                / de / ger / deu
 --  Hungarian             / hu / hun
 --  Italian               / it / ita
+--  Japanese              / ja / jp
 --  Korean                / kor / ko
 --  Norwegian             / nb / nob
 --  Polish                / pl / pol
@@ -233,6 +230,7 @@ local string_01 = [=[
 --  Russian               / ru / rus
 --  Spanish               / es / spa
 --  Swedish               / sv / swe
+--  Ukrainian             / uk / ukr
 --]=] .. '\n' ..
 'language = [['.. config_values.language ..']]' .. '\n' .. [=[
 
@@ -283,6 +281,14 @@ local string_01 = [=[
 -- Capture mouse: By default enabled (capture mouse = true).
 --]=] .. '\n' ..
 'capture_mouse = ' .. tostring(config_values.capture_mouse) .. '\n' .. [=[
+
+-------------------------------------------------------------------------------
+-- Right Mouse Scrolling: By default, it is disabled (right_mouse_scrolling = false).
+-- This means that the default scrolling method is pressing the middle mouse button.
+-- Please note this an Experimental Feature and may interfere with other right mouse
+-- operations. Report bugs for this on Github Issue 2469.
+--]=] .. '\n' ..
+'right_mouse_scrolling = ' .. tostring(config_values.right_mouse_scrolling) .. '\n' .. [=[
 
 -------------------------------------------------------------------------------
 -- Adviser on/off: If you set this to true the adviser will no longer
@@ -431,6 +437,7 @@ campaigns = nil -- [[X:\ThemeHospital\Campaigns]]
 -------------------------------------------------------------------------------
 -- Use new graphics. Whether to use the original graphics from Theme Hospital
 -- or use new graphics created by the CorsixTH project.
+-- Developer use only, otherwise the game will very likely crash in normal use
 use_new_graphics = false
 
 -------------------------------------------------------------------------------
@@ -481,16 +488,12 @@ audio_music = nil -- [[X:\ThemeHospital\Music]]
 --]=] .. '\n' ..
 'debug = ' .. tostring(config_values.debug) .. '\n' .. [=[
 
---Optional settings for CorsixTH's Lua DBGp client. Default settings are
--- nil values, platform & workingdir will be autodected if nil.
---https://wiki.eclipse.org/LDT/User_Area/User_Guides/User_Guide_1.2#Attach_session
+-- Experimental setting for falling patients. (debug only!)
+-- CorsixTH does not yet have reliable handling for falling actions and enabling it
+-- could cause dropped action queues or undesired bugs. You should leave this setting
+-- off unless you're developing with it
 --]=] .. '\n' ..
-'idehost = ' .. tostring(config_values.DBGp_client_idehost) .. '\n' ..
-'ideport = ' .. tostring(config_values.DBGp_client_ideport) .. '\n' ..
-'idekey = ' .. tostring(config_values.DBGp_client_idekey) .. '\n' ..
-'transport = ' .. tostring(config_values.DBGp_client_transport) .. '\n' ..
-'platform = ' .. tostring(config_values.DBGp_platform) .. '\n' ..
-'workingdir = ' .. tostring(config_values.DBGp_workingdir) .. '\n' .. [=[
+'debug_falling = ' .. tostring(config_values.debug_falling) .. '\n' .. [=[
 
 -- If set to true, the FPS, Lua memory usage, and entity count will be shown
 -- in the dynamic information bar. Note that setting this to true also turns
@@ -568,7 +571,6 @@ local hotkeys_defaults = {
   global_exitApp = {"alt", "f4"},
   global_resetApp = {"shift", "f10"},
   global_releaseMouse = {"ctrl", "f10"},
-  global_connectDebugger = {"ctrl", "c"},
   global_showLuaConsole = "f12",
   global_runDebugScript = {"shift", "d"},
   global_screenshot = {"ctrl", "s"},
@@ -596,6 +598,7 @@ local hotkeys_defaults = {
   ingame_zoom_out_more = {"shift", "-"},
   ingame_reset_zoom = "0",
   ingame_setTransparent = "x",
+  ingame_toggleTransparent = {"shift", "x"},
   ingame_toggleAdvisor = {"shift", "a"},
   ingame_poopLog = {"ctrl", "d"},
   ingame_poopStrings = {"ctrl", "t"},
@@ -710,7 +713,6 @@ if hotkeys_needs_rewrite and TheApp then
 'global_exitApp = ' .. hotkeys_values.global_exitApp .. '\n' ..
 'global_resetApp = ' .. hotkeys_values.global_resetApp .. '\n' ..
 'global_releaseMouse = ' .. hotkeys_values.global_releaseMouse .. '\n' ..
-'global_connectDebugger = ' .. hotkeys_values.global_connectDebugger .. '\n' ..
 'global_showLuaConsole = ' .. hotkeys_values.global_showLuaConsole .. '\n' ..
 'global_runDebugScript = ' .. hotkeys_values.global_runDebugScript .. '\n' ..
 'global_screenshot = ' .. hotkeys_values.global_screenshot .. '\n' ..
@@ -795,9 +797,10 @@ if hotkeys_needs_rewrite and TheApp then
 'ingame_quitLevel = ' .. hotkeys_values.ingame_quitLevel .. '\n' .. [=[
 
 ---------------------------------Set Transparent-------------------------------
--- While held down any walls will be transparent, allowing you to see behind them.
+-- Use these keys to make walls transparent, allowing you to see behind them.
 --]=] .. '\n' ..
-'ingame_setTransparent = ' .. hotkeys_values.ingame_setTransparent .. '\n' .. [=[
+'ingame_setTransparent = ' .. hotkeys_values.ingame_setTransparent .. '\n' ..
+'ingame_toggleTransparent = ' .. hotkeys_values.ingame_toggleTransparent .. '\n' .. [=[
 ]=]
 
 local string_05 = [=[

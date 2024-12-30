@@ -224,13 +224,6 @@ function UI:setupGlobalKeyHandlers()
   self:addOrRemoveDebugModeKeyHandlers()
 end
 
-function UI:connectDebugger()
-  local error_message = TheApp:connectDebugger()
-  if error_message then
-    self:addWindow(UIInformation(self, {error_message}))
-  end
-end
-
 -- Used for everything except music and announcements
 function UI:playSound(name, played_callback, played_callback_delay)
   if self.app.config.play_sounds then
@@ -934,8 +927,22 @@ end
 
 local UpdateCursorPosition = TH.cursor.setPosition
 
---! Called when the mouse enters or leaves the game window.
+--! Called when focus changes on game window.
+--!param gain (number) 1 for in-focus, 0 for out-of-focus
 function UI:onWindowActive(gain)
+  self:setWindowActiveStatus(gain == 1)
+end
+
+--! Stores the game window active status
+--!param state (boolean) true for in-focus, false for out-of-focus
+function UI:setWindowActiveStatus(state)
+  self.app.window_active_status = state
+end
+
+--! Gets the game window active status
+--!return true for in-focus, false for out-of-focus
+function UI:getWindowActiveStatus()
+  return self.app.window_active_status
 end
 
 --! Window has been resized by the user
@@ -1057,11 +1064,9 @@ function UI:getCursorPosition(window)
 end
 
 function UI:addOrRemoveDebugModeKeyHandlers()
-  self:removeKeyHandler("global_connectDebugger", self)
   self:removeKeyHandler("global_showLuaConsole", self)
   self:removeKeyHandler("global_runDebugScript", self)
   if self.app.config.debug then
-    self:addKeyHandler("global_connectDebugger", self, self.connectDebugger)
     self:addKeyHandler("global_showLuaConsole", self, self.showLuaConsole)
     self:addKeyHandler("global_runDebugScript", self, self.runDebugScript)
   end
@@ -1082,8 +1087,12 @@ function UI:afterLoad(old, new)
       gfx.cache.palette_greyscale_ghost = {}
       gfx.cache.language_fonts = {}
       gfx.builtin_font = nil
+
+      local palette = gfx:loadPalette("QData", "PREF01V.PAL", true)
+      self.tooltip_font = gfx:loadFont("QData", "Font00V", false, palette)
     end
   end
+
   self:setupGlobalKeyHandlers()
 
   -- Cancel any saved screen movement from edge scrolling

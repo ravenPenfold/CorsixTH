@@ -43,29 +43,28 @@ function Staff:tickDay()
   if not Humanoid.tickDay(self) then
     return false
   end
+  if self.humanoid_class == "Receptionist" then return true end
   -- Pay too low  --> unhappy
   -- Pay too high -->   happy
   local fair_wage = self.profile:getFairWage()
   local wage = self.profile.wage
   self:changeAttribute("happiness", 0.05 * (wage - fair_wage) / (fair_wage ~= 0 and fair_wage or 1))
+
   -- if you overwork your Dr's then there is a chance that they can go crazy
   -- when this happens, find him and get him to rest straight away
-  if self.attributes["fatigue"] then
-    if self.attributes["fatigue"] < 0.7 then
-      if self:isResting() then
-        self:setMood("tired", "deactivate")
-        self:changeAttribute("happiness", 0.006)
-      end
-    end
-  -- Working when you should be taking a break will make you unhappy
-    if self.attributes["fatigue"] >= self.hospital.policies["goto_staffroom"] then
-      self:changeAttribute("happiness", -0.02)
-    end
-  -- You will also start to become unhappy as you become tired
-    if self.attributes["fatigue"] >= 0.5 then
-      self:changeAttribute("happiness", -0.01)
-    end
+  if not self:isVeryTired() and self:isResting() then
+    self:setMood("tired", "deactivate")
+    self:changeAttribute("happiness", 0.006)
   end
+  -- Working when you should be taking a break will make you unhappy
+  if self:getAttribute("fatigue") >= self.hospital.policies["goto_staffroom"] then
+    self:changeAttribute("happiness", -0.02)
+  end
+  -- You will also start to become unhappy as you become tired
+  if self:getAttribute("fatigue") >= 0.5 then
+    self:changeAttribute("happiness", -0.01)
+  end
+
   -- It is nice to see plants, but dead plants make you unhappy
   self.world:findObjectNear(self, "plant", 2, function(x, y)
     local plant = self.world:getObject(x, y, "plant")
@@ -103,20 +102,7 @@ function Staff:tickDay()
 
   local room = self:getRoom()
   if room then
-    -- It always makes you happy to see the outdoors (or windows to anywhere)
-    local count = room:countWindows()
-    if room.room_info.id == "staff_room" then -- Pleased another bit
-      count = count * 2
-    end
-    if count > 0 then
-      -- More windows help but in smaller increments
-      self:changeAttribute("happiness", math.round(math.log(count)) / 1000)
-    end
-
-    -- Extra space in the room you are in adds to your happiness
-    local extraspace = (room.width * room.height) / (room.room_info.minimum_size * room.room_info.minimum_size)
-    -- Greater space helps but in smaller increments
-    self:changeAttribute("happiness", math.round(math.log(extraspace)) / 1000)
+    self:changeAttribute("happiness", room.happiness_factor)
   end
 
   return true
@@ -131,8 +117,8 @@ function Staff:tick()
 
   -- check if we need to use the staff room and go there if so
   self:checkIfNeedRest()
-  -- check if staff has been waiting too long for a raise and fire if so
-  self:checkIfWaitedTooLong()
+  -- check if staff has been waiting too long for a raise
+  self:checkIfWaitedTooLongForRaise()
 
   -- Decide whether the staff member should be tiring and tire them
   if self:isTiring() then
@@ -141,7 +127,7 @@ function Staff:tick()
   end
 
   -- Make staff members request a raise if they are very unhappy
-  if not self.world.debug_disable_salary_raise and self.attributes["happiness"] < 0.1 then
+  if not self.world.debug_disable_salary_raise and self:getAttribute("happiness") < 0.1 then
     if not self.timer_until_raise then
       self.timer_until_raise = 200
     end
@@ -168,34 +154,39 @@ function Staff:tick()
   self:updateSpeed()
 end
 
-function Staff:checkIfWaitedTooLong()
-  if self.quitting_in then
-    self.quitting_in = self.quitting_in - 1
-    if self.quitting_in < 0 then
-      local rise_windows = self.world.ui:getWindows(UIStaffRise)
-      local staff_rise_window = nil
+function Staff:checkIfWaitedTooLongForRaise()
+  if not self.quitting_in then return end
+  self.quitting_in = self.quitting_in - 1
 
-      -- We go through all "requesting rise" windows open, to see if we need
-      -- to close them when the person is fired.
-      for i = 1, #rise_windows do
-        if rise_windows[i].staff == self then
-          staff_rise_window = rise_windows[i]
-          break
-        end
-      end
-      --If the hospital policy is set to automatically grant wage increases, grant the requested raise
-      --instead of firing the staff member
-      if self.hospital.policies.grant_wage_increase then
-        local amount = math.floor(math.max(self.profile.wage * 1.1, (self.profile:getFairWage(self.world) + self.profile.wage) / 2) - self.profile.wage)
-        self.quitting_in = nil
-        self.hospital:removeMessage(self)
-        self:increaseWage(amount)
-        return
-      end
+  local is_waiting_time_is_up = self.quitting_in < 0
+  if is_waiting_time_is_up then
+    local rise_windows = self.world.ui:getWindows(UIStaffRise)
+    local staff_rise_window = nil
+    self.quitting_in = nil
+    self.hospital:removeMessage(self)
 
-      -- Plays the sack sound, but maybe it's good that you hear a staff member leaving?
+    -- We go through all "requesting rise" windows open
+    -- to close one of them if open when request resolved.
+    for i = 1, #rise_windows do
+      if rise_windows[i].staff == self then
+        staff_rise_window = rise_windows[i]
+        break
+      end
+    end
+
+    -- If the hospital policy is set to automatically grant wage increases, grant
+    -- the requested raise instead of firing the staff member
+    if self.hospital.policies.grant_wage_increase then
+      if staff_rise_window then -- if rise window open
+        staff_rise_window:increaseSalary() -- close window and raise
+      else
+        local rise_amount = self.profile:getRiseAmount()
+        self:increaseWage(rise_amount)
+      end
+    -- else: The staff member is sacked
+    else
       if staff_rise_window then
-        staff_rise_window:fireStaff()
+        staff_rise_window:fireStaff() -- close window and fire
       else
         self:fire()
       end
@@ -234,6 +225,11 @@ function Staff:isResting()
   end
 end
 
+--! Destroys any raise request window that may be queued
+function Staff:removeQueuedStaffMessage()
+  self.hospital:removeMessage(self)
+end
+
 -- Immediately terminate the staff member's employment.
 function Staff:fire()
   if self.fired then
@@ -245,6 +241,7 @@ function Staff:fire()
   if staff_window and staff_window.staff == self then
       staff_window:close()
   end
+  self:removeQueuedStaffMessage()
   self.hospital:spendMoney(self.profile.wage, _S.transactions.severance .. ": "
       .. self.profile:getFullName())
   self.world.ui:playSound("sack.wav")
@@ -266,6 +263,7 @@ function Staff:fire()
 end
 
 function Staff:die()
+  self:removeQueuedStaffMessage()
   -- Update the staff management screen (if present) accordingly
   local window = self.world.ui:getWindow(UIStaffManagement)
   if window then
@@ -297,8 +295,7 @@ function Staff:onClick(ui, button)
       ui:addWindow(UIStaff(ui, self))
     end
   elseif button == "right" then
-    self.pickup = true
-    self:setNextAction(PickupAction(ui), true)
+    self:setPickup(ui, nil)
   end
   Humanoid.onClick(self, ui, button)
 end
@@ -358,10 +355,10 @@ function Staff:updateSpeed()
     level = 1
   elseif self.hospital and self.hospital.hosp_cheats:isCheatActive("no_rest_cheat") then
     level = 3 -- Cheat makes everyone speedy
-  elseif self.attributes["fatigue"] then
-    if self.attributes["fatigue"] >= 0.8 then
+  elseif self.humanoid_class ~= "Receptionist" then
+    if self:isCrackUpTired() then
       level = level - 2
-    elseif self.attributes["fatigue"] >= 0.7 then
+    elseif self:isVeryTired() then
       level = level - 1
     end
   end
@@ -381,12 +378,12 @@ end
 -- and go to the StaffRoom if it is.
 function Staff:checkIfNeedRest()
   -- Only when the staff member is very tired should the icon emerge. Unhappiness will also escalate
-  if self.attributes["fatigue"] >= 0.7 then
+  if self:isVeryTired() then
     self:setMood("tired", "activate")
     self:changeAttribute("happiness", -0.0002)
   end
   -- If above the policy threshold, go to the staff room.
-  if self.attributes["fatigue"] >= self.hospital.policies["goto_staffroom"] and
+  if self:getAttribute("fatigue") >= self.hospital.policies["goto_staffroom"] and
       not class.is(self:getRoom(), StaffRoom) then
     -- The staff will get unhappy if there is no staffroom to rest in.
     if self.waiting_for_staffroom then
@@ -444,6 +441,18 @@ function Staff:goToStaffRoom()
     self:queueAction(SeekStaffRoomAction())
   else
     self:setNextAction(SeekStaffRoomAction())
+  end
+end
+
+-- Function to set pickup action on staff. Pickup action can be deferred.
+function Staff:setPickup(ui, window_to_close)
+  if not self.pickup then -- check if we already added pickup Action in actions queue
+    self.pickup = true
+    local pickup_action = PickupAction(ui)
+    if window_to_close then -- if we want to close some window after pickup happened
+      pickup_action = pickup_action:setTodoClose(window_to_close)
+    end
+    self:setNextAction(pickup_action, true)
   end
 end
 
@@ -578,7 +587,7 @@ function Staff:requestRaise()
     end
     -- The staff member can now successfully ask for a raise
     self.hospital:makeRaiseRequest(amount, self)
-    self.quitting_in = 25*30 -- Time until the staff members quits anyway
+    self.quitting_in = 25*30 + math.random(0, 50) -- Time until the staff members quits anyway
     self:setMood("pay_rise", "activate")
   end
 end
@@ -594,12 +603,15 @@ function Staff:increaseWage(amount)
   local wage_raised = true
   if self.profile.wage >= max_salary then
     wage_raised = false -- Already at max salary
-  elseif self.profile.wage + amount > max_salary then
-    -- Maximum salary hit. The staff member will never be unhappy again
-    self.profile.wage = max_salary
   else
+    local new_wage = self.profile.wage + amount
+    if self.profile.wage + amount > max_salary then
+      -- Maximum salary hit. The staff member will never be unhappy again
+      new_wage = max_salary
+    end
     -- Apply new salary
-    self.profile.wage = self.profile.wage + amount
+    self.profile.wage = new_wage
+    self.world.ui:playSound("bonusal2.wav")
   end
   -- Reset
   self:setMood("pay_rise", "deactivate")
@@ -618,15 +630,16 @@ end
 function Staff:updateDynamicInfo()
   local dynamic_text = self.dynamic_text or ""
   local fatigue_text = _S.dynamic_info.staff.tiredness
-  if not self.attributes["fatigue"] then
+  if self.humanoid_class == "Receptionist" then
     fatigue_text = nil
+  else
+    self:setDynamicInfo('progress', self:getAttribute("fatigue"))
   end
   self:setDynamicInfo('text', {
     self.profile.profession,
     dynamic_text,
     fatigue_text,
   })
-  self:setDynamicInfo('progress', self.attributes["fatigue"])
   if self.hospital then
     self:setDynamicInfo('dividers', {self.hospital.policies["goto_staffroom"]})
   end
@@ -660,11 +673,10 @@ function Staff:afterLoad(old, new)
     self.profile.world = self.world
   end
   if old < 68 and new >= 68 then
-    if self.attributes["fatigue"] then
-      if self.attributes["fatigue"] >= self.hospital.policies["goto_staffroom"] then
-        self:goToStaffRoom()
-        self.going_to_staffroom = true
-      end
+    if self.humanoid_class ~= "Receptionist" and
+        self:getAttribute("fatigue") >= self.hospital.policies["goto_staffroom"] then
+      self:goToStaffRoom()
+      self.going_to_staffroom = true
     end
   end
 
@@ -715,8 +727,8 @@ function Staff:getServiceQuality()
 
   local weighted_skill = skill_weight * self.profile.skill
   -- Less fatigue is better
-  local weighted_restfulness = restfulness_weight * (1 - self.attributes["fatigue"])
-  local weighted_happiness = happiness_weight * self.attributes["happiness"]
+  local weighted_restfulness = restfulness_weight * (1 - self:getAttribute("fatigue"))
+  local weighted_happiness = happiness_weight * self:getAttribute("happiness")
 
   return weighted_skill + weighted_restfulness + weighted_happiness
 end
@@ -726,6 +738,18 @@ end
 ]]
 function Staff:tostring()
   return Humanoid.tostring(self)
+end
+
+--! Judge tiredness based on the level config (which has a default of 700)
+--!return (boolean) Is staff member very tired?
+function Staff:isVeryTired()
+  return self:getAttribute("fatigue") * 1000 >= self.world.map.level_config.gbv.VeryTired
+end
+
+--! Judge crack up tiredness based on the level config (which has a default of 800)
+--!return (boolean) Is staff member very tired?
+function Staff:isCrackUpTired()
+  return self:getAttribute("fatigue") * 1000 >= self.world.map.level_config.gbv.CrackUpTired
 end
 
 -- Dummy callback for savegame compatibility

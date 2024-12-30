@@ -119,7 +119,7 @@ function Hospital:Hospital(world, avail_rooms, name)
     general = 0,
   }
 
-  self.num_visitors = 0
+  self.num_visitors = 0 -- Counts patients only
   self.num_deaths = 0
   self.num_deaths_this_year = 0
   self.num_cured = 0
@@ -171,7 +171,6 @@ function Hospital:Hospital(world, avail_rooms, name)
   self.patients = {}
   self.debug_patients = {} -- right-click-commandable patients for testing
   self.disease_casebook = {}
-  self.policies = {}
   self.discovered_diseases = {} -- a list
 
   -- Create a cheats instance for each hospital. AIHospitals don't know how to cheat (we hope!)
@@ -187,12 +186,15 @@ function Hospital:Hospital(world, avail_rooms, name)
     }
   end
 
-  self.policies["staff_allowed_to_move"] = true
-  self.policies["send_home"] = 0.1
-  self.policies["guess_cure"] = 0.9
-  self.policies["stop_procedure"] = 1 -- Note that this is between 1 and 2 ( = 100% - 200%)
-  self.policies["goto_staffroom"] = 0.6
-  self.policies["grant_wage_increase"] = TheApp.config.grant_wage_increase
+  local gbv = level_config.gbv
+  self.policies = {
+    staff_allowed_to_move = true,
+    send_home = 0.1,
+    guess_cure = 0.9,
+    stop_procedure = 1, -- Note that this is between 1 and 2 ( = 100% - 200%)
+    goto_staffroom = gbv.Tired / 1000, -- Defaults to 0.6 on normal difficulty
+    grant_wage_increase = TheApp.config.grant_wage_increase,
+  }
 
   -- Semi-randomly select three insurance companies to use, only different by name right now.
   -- The companies in the first quarter of the list are more likely to be selected
@@ -219,7 +221,6 @@ function Hospital:Hospital(world, avail_rooms, name)
   -- Initialize diseases
   local diseases = TheApp.diseases
   local expertise = level_config.expertise
-  local gbv = level_config.gbv
   for _, disease in ipairs(diseases) do
     local disease_available = true
     local drug_effectiveness = 95
@@ -1047,6 +1048,17 @@ function Hospital:hasStaffedDesk()
   return false
 end
 
+--! Returns a list of all reception desks that are staffed
+function Hospital:getStaffedDesks()
+  local staffed_desks = {}
+  for _, desk in ipairs(self:findReceptionDesks()) do
+    if desk.receptionist or desk.reserved_for then
+      staffed_desks[#staffed_desks + 1] = desk
+    end
+  end
+  return staffed_desks
+end
+
 --! Collect the reception desks in the hospital.
 --!return (list) The reception desks in the hospital.
 function Hospital:findReceptionDesks()
@@ -1157,7 +1169,9 @@ end
  see @Hospital:determineIfContagious() to see how epidemics are typically started]]
 function Hospital:spawnContagiousPatient()
   --[[ Gets the available non-visual disease in the current world
-    @return non_visuals (table) table of available non-visual diseases]]
+    @return non_visuals (table) table of available non-visual diseases or
+      false if the patient cannot be spawned.
+    @return message (optional string) The error message that may be caused by using cheats.]]
   local function get_available_contagious_diseases()
     local contagious = {}
     for _, disease in ipairs(self.world.available_diseases) do
@@ -1176,14 +1190,18 @@ function Hospital:spawnContagiousPatient()
       patient:setDisease(disease)
       --Move the first patient closer (FOR TESTING ONLY)
       local x,y = self:getHeliportSpawnPosition()
+      if not x then
+        local spawn_point = self.world.spawn_points[math.random(1, #self.world.spawn_points)]
+        x, y = spawn_point.x, spawn_point.y
+      end
       patient:setTile(x,y)
       patient:setHospital(self)
       self:addToEpidemic(patient)
     else
-      print("Cannot create epidemic - no contagious diseases available")
+      return false, _S.misc.epidemic_no_diseases
     end
   else
-    print("Cannot create epidemic - no staffed reception desk")
+    return false, _S.misc.epidemic_no_receptionist
   end
 end
 
@@ -1232,7 +1250,7 @@ end
  appropriate epidemic if so.
  @param patient (Patient) patient to determine if contagious]]
 function Hospital:determineIfContagious(patient)
-  if patient.is_emergency or not patient.disease.contagious then
+  if self.epidemics_off or patient.is_emergency or not patient.disease.contagious then
     return false
   end
   -- ContRate treated like a percentage with ContRate% of patients with
@@ -1292,15 +1310,6 @@ end
 
 function Hospital:spawnPatient()
   self.world:spawnPatient(self)
-end
-
-function Hospital:removeDebugPatient(patient)
-  for i, p in ipairs(self.debug_patients) do
-    if p == patient then
-      table.remove(self.debug_patients, i)
-      return
-    end
-  end
 end
 
 local debug_n
@@ -1385,7 +1394,8 @@ function Hospital:receiveMoneyForTreatment(patient)
     else
       reason = _S.transactions.cure_colon .. " " .. casebook.disease.name
     end
-    local amount = self:getTreatmentPrice(disease_id)
+    local amount = patient.pay_amount or 0
+    amount = amount > 0 and amount or self:getTreatmentPrice(disease_id)
 
     -- 25% of the payments now go through insurance
     if patient.insurance_company then
@@ -1398,13 +1408,15 @@ function Hospital:receiveMoneyForTreatment(patient)
     end
     casebook.money_earned = casebook.money_earned + amount
     patient.world:newFloatingDollarSign(patient, amount)
+    patient.pay_amount = 0
   end
 end
 
---! Sell a soda to a patient.
+--! Sell a soda to a patient for the price in the level config (default $20).
 --!param patient (patient) The patient buying the soda.
 function Hospital:sellSodaToPatient(patient)
-  self:receiveMoneyForProduct(patient, 20, _S.transactions.drinks)
+  local soda_price = self.world.map.level_config.gbv.SodaPrice
+  self:receiveMoneyForProduct(patient, soda_price, _S.transactions.drinks)
   self.sodas_sold = self.sodas_sold + 1
 end
 
@@ -1714,9 +1726,17 @@ function Hospital:removeStaff(staff)
 end
 
 --! Remove a patient from the hospital.
+--  Also if a debug patient, they are also removed from the debug list.
 --!param patient (Patient) Patient to remove.
 function Hospital:removePatient(patient)
+  if patient.is_debug then self:removeDebugPatient(patient) end
   RemoveByValue(self.patients, patient)
+end
+
+--! Remove a debug patient from the debug list.
+--!param patient (Patient) Patient to remove
+function Hospital:removeDebugPatient(patient)
+  RemoveByValue(self.debug_patients, patient)
 end
 
 -- TODO: This should depend on difficulty and level
@@ -2365,6 +2385,28 @@ function Hospital:getRandomBusyRoom()
   if #chosen_room.door.queue >= busy_threshold then return chosen_room end
 end
 
+--! Open the hospital
+function Hospital:open()
+  self.opened = true
+end
+
+--! Check if the hospital is ready to accept patients
+function Hospital:canAcceptPatients()
+  return self.opened and self:hasStaffedDesk()
+end
+
+--! Has this hospital received any patients yet?
+function Hospital:hadPatients()
+  return self.num_visitors > 0
+end
+
+--! Reset the death counts. This is used by a cheat to reset key lose conditions.
+function Hospital:resetDeathCount()
+  self.num_deaths = 0
+  self.num_deaths_this_year = 0
+  self.statistics.deaths = 0
+end
+
 ---- Stubs section - these functions have nothing to do here, are overridden in a derived class.
 
 --! Give advice to the user about the need to buy the first reception desk.
@@ -2455,4 +2497,12 @@ end
 
 --! Called when the vip is out of the hospital grounds
 function Hospital:makeVipEndFax(vip_rating, name, cash_reward, vip_message)
+end
+
+--! Play a sound file
+function Hospital:playSound(sound)
+end
+
+--! The UI parts of earthquake ticks
+function Hospital:tickEarthquake(stage)
 end

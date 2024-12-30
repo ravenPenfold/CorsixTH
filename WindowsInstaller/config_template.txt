@@ -33,6 +33,7 @@ height = SCREEN_SIZE_HEIGHT
 --  German                / de / ger / deu
 --  Hungarian             / hu / hun
 --  Italian               / it / ita
+--  Japanese              / ja / jp
 --  Korean                / kor / ko
 --  Norwegian             / nb / nob
 --  Polish                / pl / pol
@@ -40,6 +41,7 @@ height = SCREEN_SIZE_HEIGHT
 --  Russian               / ru / rus
 --  Spanish               / es / spa
 --  Swedish               / sv / swe
+--  Ukrainian             / uk / ukr
 --
 language = [[LANGUAGE_CHOSEN]]
 
@@ -90,6 +92,14 @@ prevent_edge_scrolling = false
 -- Capture mouse: By default enabled (capture mouse = true).
 --
 capture_mouse = true
+
+-------------------------------------------------------------------------------
+-- Right Mouse Scrolling: By default, it is disabled (right_mouse_scrolling = false).
+-- This means that the default scrolling method is pressing the middle mouse button.
+-- Please note this an Experimental Feature and may interfere with other right mouse
+-- operations. Report bugs for this on Github Issue 2469.
+--
+right_mouse_scrolling = false
 
 -------------------------------------------------------------------------------
 -- Adviser on/off: If you set this to true the adviser will no longer
@@ -236,6 +246,7 @@ campaigns = nil -- [[X:\ThemeHospital\Campaigns]]
 -------------------------------------------------------------------------------
 -- Use new graphics. Whether to use the original graphics from Theme Hospital
 -- or use new graphics created by the CorsixTH project.
+-- Developer use only, otherwise the game will very likely crash in normal use
 use_new_graphics = false
 
 -------------------------------------------------------------------------------
@@ -286,16 +297,12 @@ audio_buffer_size = 2048
 --
 debug = false
 
---Optional settings for CorsixTH's Lua DBGp client. Default settings are
--- nil values, platform & workingdir will be autodected if nil.
---https://wiki.eclipse.org/LDT/User_Area/User_Guides/User_Guide_1.2#Attach_session
+-- Experimental setting for falling patients. (debug only!)
+-- CorsixTH does not yet have reliable handling for falling actions and enabling it
+-- could cause dropped action queues or undesired bugs. You should leave this setting
+-- off unless you're developing with it
 --
-idehost = nil
-ideport = nil
-idekey = nil
-transport = nil
-platform = nil
-workingdir = nil
+debug_falling = false
 
 -- If set to true, the FPS, Lua memory usage, and entity count will be shown
 -- in the dynamic information bar. Note that setting this to true also turns

@@ -63,6 +63,7 @@ function Strings:init()
   self.language_to_chunk = {}
   self.chunk_to_font = {}
   self.chunk_to_names = {}
+  self.language_to_lang_code = {}
   for chunk, filename in pairs(self.language_chunks) do
     -- To allow the file to set global variables without causing an error, it
     -- is given an infinite table as an environment. Reading a non-existent
@@ -89,11 +90,13 @@ function Strings:init()
         if names[1] ~= "original_strings" then
           self.languages[#self.languages + 1] = names[1]
           -- Also save the second name for tooltips and internal purposes.
+          assert(names[2], filename .. " does not have an English name.")
           self.languages_english[names[1]] = names[2]
         end
         -- Associate every passed name with this file, case-independently
         for _, name in pairs(names) do
           self.language_to_chunk[name:lower()] = chunk
+          self.language_to_lang_code[name:lower()] = names[3]
         end
         self.chunk_to_names[chunk] = names
         error(good_error_marker)
@@ -290,6 +293,23 @@ function Strings:getLanguageNames(language)
   return chunk and self.chunk_to_names[chunk]
 end
 
+function Strings:getLangCode(language)
+  local lang = language or self.app.config.language
+  return self.language_to_lang_code[lang:lower()]
+end
+
+--! Use local language text where possible.
+--!param string (string) The default, likely English, text
+--!param table (table) A table of translated text in language code fields
+--!return (string) The text in the current language if available, or in English, or the default string.
+function Strings:getLocalisedText(string, table)
+  if string and not table then return string
+  elseif table[self:getLangCode()] then return table[self:getLangCode()]
+  elseif table.en then return table.en
+  else return string
+  end
+end
+
 function Strings:_loadPrivate(language, env, ...)
   local chunk = self.language_to_chunk[language:lower()]
   if not chunk then -- If selected language could not be found, try to revert to English
@@ -331,10 +351,11 @@ function Strings:setupAdviserMessage(messages)
     --build_advice
     --cheats
   }
+  -- Passes adviser message through string.format process
   local formatFunc
-  formatFunc = function(format_self, arg)
+  formatFunc = function(format_self, ...)
     -- After 'format', it is not useful to have indexing magic anymore.
-    return { text = format_self.text:format(arg), priority = format_self.priority }
+    return { text = format_self.text:format(...), priority = format_self.priority }
   end
   local indexFunc
   indexFunc = function(index_self, field)

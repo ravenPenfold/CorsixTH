@@ -1,4 +1,4 @@
---[[ Copyright (c) 2010-2020 Manuel "Roujin" Wolf, Edvin "Lego3" Linge, lewri et al.
+--[[ Copyright (c) 2010-2024 Manuel "Roujin" Wolf, Edvin "Lego3" Linge, MandrakeHorse, lewri et al.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -42,6 +42,17 @@ adviser.goals.lose.kill = "Kill another %d patients to lose the level!"
 -- Improve tooltips in staff window to mention hidden features
 tooltip.staff_window.face = "This person's face - click to open management screen"
 tooltip.staff_window.center_view = "Left click to zoom to staff, right click to cycle through staff members"
+
+-- Improve tooltips in Research Screen
+tooltip.research.cure_dec = "Decrease Cure research percentage"
+tooltip.research.cure_inc = "Increase Cure research percentage"
+tooltip.research.diagnosis_dec = "Decrease Diagnosis research percentage"
+tooltip.research.diagnosis_inc = "Increase Diagnosis research percentage"
+tooltip.research.drugs_dec = "Decrease Drugs research percentage"
+tooltip.research.improvements_dec = "Decrease Improvements research percentage"
+tooltip.research.improvements_inc = "Increase Improvements research percentage"
+tooltip.research.specialisation_dec = "Decrease Specialisation research percentage"
+tooltip.research.specialisation_inc = "Increase Specialisation research percentage"
 
 -- These strings are missing in some versions of TH (unpatched?)
 confirmation.restart_level = "Are you sure you want to restart the level?"
@@ -193,6 +204,7 @@ menu_debug = {
   limit_camera                = "  LIMIT CAMERA  ",
   disable_salary_raise        = "  DISABLE SALARY RAISE  ",
   allow_blocking_off_areas    = "  ALLOW BLOCKING OFF AREAS  ",
+  allow_falling               = "  ALLOW FALLING  ",
   make_debug_fax              = "  MAKE DEBUG FAX  ",
   make_debug_patient          = "  MAKE DEBUG PATIENT  ",
   cheats                      = "  (%1%) CHEATS  ",
@@ -238,6 +250,7 @@ adviser = {
     another_desk = "You'll need to build another desk for that new receptionist.",
     cannot_afford = "You don't have enough money in the bank to hire that person!", -- I can't see anything like this in the original strings
     cannot_afford_2 = "You don't have enough money in the bank to make that purchase!",
+    cannot_afford_machine = "You need at least $%1% in the bank to afford a new %2%!",
     falling_1 = "Hey! That is not funny, watch where you click that mouse; someone could get hurt!",
     falling_2 = "Stop messing about, how would you like it?",
     falling_3 = "Ouch, that had to hurt, someone call a Doctor!",
@@ -264,7 +277,7 @@ adviser = {
     norest_off_cheat = "Phew! Looks like that buzz finally wore off. Your staff will now rest properly.",
   },
   staff_place_advice = {
-    not_enough_lecture_chairs = "Each student doctor needs a lecture chair to sit in!"
+    not_enough_lecture_chairs = "Each student doctor needs a lecture chair to sit in!",
   },
 }
 
@@ -315,9 +328,18 @@ install = {
   cancel = "Cancel",
 }
 
-misc.not_yet_implemented = "(not yet implemented)"
-misc.no_heliport = "Either no diseases have been discovered yet, or there is no heliport on this map. It might be that you need to build a reception desk and hire a receptionist"
-misc.cant_treat_emergency = "Your hospital cannot treat this emergency because its disease has not been discovered. Feel free to try again."
+misc = {
+  not_yet_implemented = "(not yet implemented)",
+  no_heliport = "Either no diseases have been discovered yet, or there is no heliport on this map. It might be that you need to build a reception desk and hire a receptionist",
+  cant_treat_emergency = "Your hospital cannot treat this emergency because its disease has not been discovered. Feel free to try again.",
+  epidemics_off = "Epidemics are disabled",
+  epidemics_on = "Epidemics are re-enabled",
+  earthquakes_off = "Earthquakes are disabled",
+  earthquakes_on = "Earthquakes are re-enabled",
+  epidemic_no_icon_to_toggle = "Unable to show/hide infected icons - no epidemics in progress that are not revealed",
+  epidemic_no_diseases = "Cannot create epidemic - no contagious diseases available",
+  epidemic_no_receptionist = "Cannot create epidemic - no staffed reception desk",
+}
 
 main_menu = {
   new_game = "Campaign",
@@ -347,6 +369,7 @@ tooltip.main_menu = {
 
 load_game_window = {
   caption = "Load Game (%1%)",
+  load_button = "Load",
 }
 
 tooltip.load_game_window = {
@@ -380,6 +403,8 @@ tooltip.custom_campaign_window = {
 save_game_window = {
   caption = "Save Game (%1%)",
   new_save_game = "New Savegame",
+  save_button = "Save",
+  missing_filename = "Please enter the name of the new save or select the save to overwrite.",
 }
 
 tooltip.save_game_window = {
@@ -390,11 +415,18 @@ tooltip.save_game_window = {
 save_map_window = {
   caption = "Save Map (%1%)",
   new_map = "New Map",
+  save_button = "Save",
+  missing_filename = "Please enter the name of the new map file or select the map file to overwrite.",
 }
 
 tooltip.save_map_window = {
   map = "Overwrite map %s",
   new_map = "Enter name for a map savegame",
+}
+
+load_map_window = {
+  caption = "Load Map (%1%)",
+  load_button = "Load",
 }
 
 menu_list_window = {
@@ -420,6 +452,9 @@ options_window = {
   fullscreen = "Fullscreen",
   resolution = "Resolution",
   capture_mouse = "Capture Mouse",
+  right_mouse_scrolling = "Mouse Scrolling",
+  right_mouse_scrolling_option_middle = "Middle Button",
+  right_mouse_scrolling_option_right = "Right Button",
   custom_resolution = "Custom...",
   width = "Width",
   height = "Height",
@@ -435,6 +470,7 @@ options_window = {
   zoom_speed = "Zoom Speed",
   hotkey = "Hotkeys",
   check_for_updates = "Check for Updates",
+  jukebox = "Jukebox",
 }
 
 tooltip.options_window = {
@@ -442,7 +478,8 @@ tooltip.options_window = {
   fullscreen_button = "Click to toggle fullscreen mode",
   resolution = "The resolution the game should run in",
   select_resolution = "Select a new resolution",
-  capture_mouse = "Click to toggle capturing the cursor in the game window",
+  capture_mouse = "Click to toggle capturing the cursor while in game",
+  right_mouse_scrolling = "Toggle the mouse button that is used to scroll the map",
   width = "Enter desired screen width",
   height = "Enter desired screen height",
   apply = "Apply the entered resolution",
@@ -454,6 +491,7 @@ tooltip.options_window = {
   language = "The language texts in the game will appear in",
   select_language = "Select the game language",
   language_dropdown_item = "Choose %s as language",
+  language_dropdown_no_font = "Select a font in the folders settings to enable this language",
   back = "Close the Settings window",
   scrollspeed = "Set the scroll speed between 1 (slowest) to 10 (fastest). The default is 2.",
   shift_scrollspeed = "Set the speed of scrolling while the shift key is pressed. 1 (slowest) to 10 (fastest). The default is 4.",
@@ -466,6 +504,7 @@ tooltip.options_window = {
   cancel_zoomspeed = "Return without changing the zoom speed.",
   hotkey = "Change keyboard hotkeys.",
   check_for_updates = "Sets whether the game should look for updates on launch.",
+  jukebox = "Open the Jukebox to control the music"
 }
 
 customise_window = {
@@ -526,7 +565,6 @@ tooltip.folders_window = {
   not_specified = "No folder location specified yet!",
   default = "Default location",
   reset_to_default = "Reset the directory to its default location",
- -- original_path = "The currently chosen directory of the original Theme Hospital installation", -- where is this used, I have left if for the time being?
   back  = "Close this menu and go back to the Settings Menu",
 }
 
@@ -610,6 +648,7 @@ hotkey_window = {
   ingame_restartLevel = "Restart Level",
   ingame_quitLevel = "Quit Level",
   ingame_setTransparent = "Transparent",
+  ingame_toggleTransparent = "Toggle transparent",
   ingame_toggleAnnouncements = "Announcements",
   ingame_toggleSounds = "Sounds",
   ingame_toggleMusic = "Music",
@@ -644,9 +683,15 @@ tooltip.hotkey_window = {
   button_accept = "Accept and save hotkey assignments",
   button_defaults = "Reset all hotkeys to the program's defaults",
   button_cancel = "Cancel the assignment and go back to the options menu",
-  caption_panels = "Open window to assign panel keys",
-  button_gameSpeedKeys = "Open window to set keys to control game speed",
-  button_recallPosKeys = "Open window to set keys to store and recall camera positions",
+  panel_globalKeys = "Assign global hotkeys",
+  panel_generalInGameKeys = "Assign general in-game hotkeys",
+  button_gameSpeedKeys = "Assign hotkeys to control the game speed",
+  panel_scrollKeys = "Assign hotkeys to scroll the screen",
+  panel_zoomKeys = "Assign hotkeys to zoom in and out",
+  panel_toggleKeys = "Assign hotkeys to toggle options",
+  caption_panels = "Assign hotkeys to open panels",
+  button_recallPosKeys = "Assign hotkeys to save and recall camera positions",
+  panel_debugKeys = "Assign hotkeys for debugging",
   button_back_02 = "Go back to the main hotkey window. Hotkeys changed in this window can be accepted there",
 }
 
@@ -703,6 +748,8 @@ errors = {
   dialog_missing_graphics = "Sorry, the demo data files don't contain this dialog.",
   save_prefix = "Error while saving game: ",
   load_prefix = "Error while loading game: ",
+  load_map_prefix = "Error while loading map: ",
+  load_level_prefix = "Error while loading level: ",
   no_games_to_contine = "There are no saved games.",
   load_quick_save = "Error, cannot load the quicksave as it does not exist, not to worry as we have now created one for you!",
   map_file_missing = "Could not find the map file %s for this level!",
@@ -712,13 +759,14 @@ errors = {
   fractured_bones = "NOTE: The animation for female patients with Fractured Bones is not perfect",
   could_not_load_campaign = "Failed to load the campaign: %s",
   could_not_find_first_campaign_level = "Could not find the first level of this campaign: %s",
-  save_to_tmp = "The file at %s could not be used. The game has been saved to %s. Error: %s",
+  save_to_tmp = "Attempt to write to %s failed. File was written instead to temporary location %s because of the error: %s",
   dialog_empty_queue = "Sorry, a humanoid just had an empty action queue, which means that they didn't know what to do next. Please consult the command window for more detailed information. A dialog with the offending humanoid has been opened. Would you like them to leave the hospital?",
   compatibility_error = {
     new_in_old = "Sorry, this save was created with a newer version of CorsixTH and is not compatible. Please update to a more recent version.",
     demo_in_full = "Sorry, you can't open a demo savegame with the full game files loaded. Please update your TH Data folder setting.",
     full_in_demo = "Sorry, you can't open a full game save with the demo files loaded. Please update your TH Data folder setting.",
   },
+  music = "There are playback issues with one or more files in your music directory. Problematic files will be disabled in the jukebox. See the console window for more information.",
 }
 
 warnings = {
@@ -733,6 +781,8 @@ confirmation = {
   maximum_screen_size = "The screen size you have entered is greater than 3000 x 2000. Larger resolutions are possible but will require better hardware in order to maintain a playable frame rate. Are you sure you want to continue?",
   remove_destroyed_room = "Would you like to remove the room for $%d?",
   replace_machine_extra_info = "The new machine will have %d strength (currently %d).",
+  restart_mapeditor = "Are you sure you want to restart the map editor?",
+  quit_mapeditor = "Are you sure you want to quit the map editor?",
 }
 
 information = {
@@ -747,6 +797,8 @@ information = {
     balance = "Your bank balance fell below %d.",
     percentage_killed = "You killed more than %d percent of the patients.",
     cheat = "This was your choice or did you select the wrong button? So you can't even cheat correctly, not that funny huh?",
+    staff_happiness = "Your average staff happiness fell below %d%.",
+    patient_happiness = "Your average patient happiness fell below %d%.",
   },
   cheat_not_possible = "Cannot use that cheat on this level. You even fail to cheat, not that funny huh?",
 }
@@ -807,9 +859,11 @@ cheats_window = {
     all_research = "All Research Cheat",
     emergency = "Create Emergency",
     vip = "Create VIP",
+    toggle_earthquake = "Toggle earthquakes",
     earthquake = "Create Earthquake",
+    toggle_epidemic = "Toggle epidemics",
     epidemic = "Spawn contagious patient",
-    toggle_infected = "Toggle infected icons",
+    show_infected = "Show or hide infected icons",
     create_patient = "Create Patient",
     end_month = "End of Month",
     end_year = "End of Year",
@@ -817,6 +871,8 @@ cheats_window = {
     win_level = "Win Level",
     increase_prices = "Increase prices",
     decrease_prices = "Decrease prices",
+    reset_death_count = "Reset death count",
+    max_reputation = "Max reputation",
   },
   close = "Close",
 }
@@ -828,9 +884,11 @@ tooltip.cheats_window = {
     all_research = "Completes all research",
     emergency = "Creates an emergency",
     vip = "Creates a VIP",
+    toggle_earthquake = "Toggle earthquakes",
     earthquake = "Creates an earthquake",
+    toggle_epidemic = "Toggle whether epidemics can happen",
     epidemic = "Creates a contagious patient who may cause an epidemic to happen",
-    toggle_infected = "Toggle the infected icons for the active, discovered epidemic",
+    show_infected = "Show/hide the infected icons for the active, discovered epidemic",
     create_patient = "Creates a Patient at the map border",
     end_month = "Jumps to the end of the month",
     end_year = "Jumps to the end of the year",
@@ -838,6 +896,8 @@ tooltip.cheats_window = {
     win_level = "Win the current level",
     increase_prices = "Increase all prices by 50% (max. 200%)",
     decrease_prices = "Decrease all prices by 50% (min. 50%)",
+    reset_death_count = "Reset the hospital death count to zero",
+    max_reputation = "Set the hospital reputation to the maximum",
   }
 }
 
@@ -891,17 +951,10 @@ map_editor_window = {
     north_wall = "North wall",
     west_wall = "West wall",
     helipad = "Helipad",
+    set_parcel = "Set parcel num",
     delete_wall = "Delete walls",
-    parcel_0 = "Parcel 0",
-    parcel_1 = "Parcel 1",
-    parcel_2 = "Parcel 2",
-    parcel_3 = "Parcel 3",
-    parcel_4 = "Parcel 4",
-    parcel_5 = "Parcel 5",
-    parcel_6 = "Parcel 6",
-    parcel_7 = "Parcel 7",
-    parcel_8 = "Parcel 8",
-    parcel_9 = "Parcel 9",
+    parcel = "Parcel %d",
+    set_parcel_tooltip = "Choose a number and press enter.",
     camera_1 = "Camera 1",
     camera_2 = "Camera 2",
     camera_3 = "Camera 3",
@@ -911,7 +964,10 @@ map_editor_window = {
     heliport_3 = "Heliport 3",
     heliport_4 = "Heliport 4",
     paste = "Paste area",
-  }
+  },
+  checks = {
+    spawn_points_and_path = "Warning: Patients cannot reach the hospital. They need 'road' tiles or 'outside' grey tiles at the edge of the map and a path of these tiles to the hospital entrance.",
+  },
 }
 
 hotkeys_file_err = {
@@ -922,61 +978,26 @@ hotkeys_file_err = {
 }
 
 transactions.remove_room = "Build: Remove destroyed room"
+
+tooltip.status = {
+  over = {
+    staff_happiness = "Your average staff happiness should be over %d%. Currently it's %d%",
+    patient_happiness = "Your average patient happiness should be over %d%. Currently it's %d%",
+  },
+  under = {
+    staff_happiness = "Your average staff happiness should not be less than %d%. Currently it's %d%",
+    patient_happiness = "Your average patient happiness should not be less than %d%. Currently it's %d%",
+  }
+}
 --------------------------------  UNUSED  -----------------------------------
 ------------------- (kept for backwards compatibility) ----------------------
 
 options_window.change_resolution = "Change resolution"
 tooltip.options_window.change_resolution = "Change the window resolution to the dimensions entered on the left"
 
---[[ Compatibility mapping for VIP result faxes in old saves (< 0.66). Using non-
-standard string formatting here, which should not be repeated in normal
-circumstances. This mapping will cause the legacy string to print in English but only
-for the relevant fax. These should be deleted on 2024 release. ]]--
-fax = {
-  vip_visit_result = {
-    ordered_remarks = {
-      [1] = fax.vip_visit_result.remarks[1],
-      [2] = fax.vip_visit_result.remarks[2],
-      [3] = fax.vip_visit_result.remarks[3],
-      [4] = fax.vip_visit_result.remarks[4],
-      [5] = fax.vip_visit_result.remarks[5],
-      [6] = fax.vip_visit_result.remarks[6],
-      [7] = fax.vip_visit_result.remarks[7],
-      [8] = fax.vip_visit_result.remarks[8],
-      [9] = fax.vip_visit_result.remarks[9],
-      [10] = fax.vip_visit_result.remarks[10],
-      [11] = fax.vip_visit_result.remarks[11],
-      [12] = fax.vip_visit_result.remarks[12],
-      [13] = fax.vip_visit_result.remarks[13],
-      [14] = fax.vip_visit_result.remarks[14],
-      [15] = fax.vip_visit_result.remarks[15],
-    },
-    remarks = {
-      super = {
-        fax.vip_visit_result.remarks[1],
-        fax.vip_visit_result.remarks[2],
-        fax.vip_visit_result.remarks[3],
-      },
-      good = {
-        fax.vip_visit_result.remarks[4],
-        fax.vip_visit_result.remarks[5],
-        fax.vip_visit_result.remarks[6],
-      },
-      mediocre = {
-        fax.vip_visit_result.remarks[7],
-        fax.vip_visit_result.remarks[8],
-        fax.vip_visit_result.remarks[9],
-      },
-      bad = {
-        fax.vip_visit_result.remarks[10],
-        fax.vip_visit_result.remarks[11],
-        fax.vip_visit_result.remarks[12],
-      },
-      very_bad = {
-        fax.vip_visit_result.remarks[13],
-        fax.vip_visit_result.remarks[14],
-        fax.vip_visit_result.remarks[15],
-      }
-    }
-  }
+cheats_window.cheats = {
+ toggle_infected = show_infected,
+}
+tooltip.cheats_window.cheats = {
+ toggle_infected = show_infected,
 }

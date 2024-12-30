@@ -50,7 +50,8 @@ local function createCampaignList(path)
             tooltip = _S.tooltip.custom_campaign_window.choose_campaign,
             no_levels = #campaign_info.levels,
             path = file,
-            description = campaign_info.description,
+            description = TheApp.strings:getLocalisedText(campaign_info.description,
+               campaign_info.description_table)
           }
         else
           print("Warning: Loaded campaign that had no levels specified")
@@ -84,6 +85,10 @@ function UICustomCampaign:UICustomCampaign(ui)
     :setLabel(_S.custom_campaign_window.start_selected_campaign)
     :makeButton(0, 0, 160, 40, 11, self.buttonStartCampaign)
     :setTooltip(_S.tooltip.custom_campaign_window.start_selected_campaign)
+end
+
+function UICustomCampaign:updateDescriptionOffset()
+  self.description_offset = self.details_scrollbar.value - 1
 end
 
 -- Overrides the function in the UIMenuList, choosing what should happen when the player

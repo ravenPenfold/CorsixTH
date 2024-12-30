@@ -469,10 +469,10 @@ end
 --!param room The room of the machine
 function PlayerHospital:announceRepair(room)
   local sound = room.room_info.handyman_call_sound
-  local earthquake = self.world.next_earthquake
+  local earthquake = self.world.earthquake
   self.world.ui:playAnnouncement("machwarn.wav", AnnouncementPriority.Critical)
   -- If an earthquake is happening don't play the call sound to prevent spamming
-  if earthquake.active and earthquake.warning_timer == 0 then return end
+  if earthquake:isActive() and earthquake.warning_timer == 0 then return end
   if self:countStaffOfCategory("Handyman", 1) == 0 then return end
   if sound then self.world.ui:playAnnouncement(sound, AnnouncementPriority.Critical) end
 end
@@ -483,9 +483,15 @@ end
 
 --! Called at the end of each day.
 function PlayerHospital:onEndDay()
-  -- Advise the player.
-  if self:hasStaffedDesk() then
+  if self:canAcceptPatients() then
+    -- Are we providing advice today?
     self:dailyAdviceChecks()
+
+    -- If we haven't spawned our first patient yet for the player make it happen so
+    -- they don't wait too long
+    if self.num_visitors == 0 then
+      self.world:spawnPatient(self)
+    end
   end
 
   -- check if we still have to announce VIP visit
@@ -761,10 +767,55 @@ function PlayerHospital:makeVipEndFax(vip_rating, name, cash_reward, vip_message
   self.world.ui.bottom_panel:queueMessage("report", message, nil, Date.hoursPerDay() * 20, 1)
 end
 
-function PlayerHospital:afterLoad(old, new)
-  if old < 145 then
-    self.hosp_cheats = Cheats(self)
+--! Play a sound file
+function PlayerHospital:playSound(sound)
+  if self.world.app.config.play_sounds then
+    self.world.app.audio:playSound(sound)
   end
+end
+
+--! The UI parts of earthquake ticks
+--!param stage (string) Stage of the active earthquake. This must be one of the following,
+-- "warning_start", "main_start", "end", "pause", "small_damage", "large damage", "sound"
+function PlayerHospital:tickEarthquake(stage)
+  local ui = self.world.ui
+  local announcements = {
+    "quake001.wav", "quake002.wav", "quake003.wav", "quake004.wav",
+  }
+
+  -- Start of earthquakes
+  if stage == "warning_start" then
+    ui:beginShakeScreen(0.2)
+    ui:playRandomAnnouncement(announcements, AnnouncementPriority.Critical)
+  elseif stage == "main_start" then
+    ui:playRandomAnnouncement(announcements, AnnouncementPriority.Critical)
+
+  -- At the end of the warning or main earthquake, or on game pause, stop all screen movement
+  elseif stage == "end" or stage == "pause" then
+    ui:endShakeScreen()
+
+  -- All earthquakes start and end small (small earthquakes never become
+  -- larger), so when there has been less than 2 damage applied or only
+  -- 2 damage remaining to be applied, move the screen with less
+  -- intensity than otherwise.
+  elseif stage == "small_damage" then
+    ui:beginShakeScreen(0.5)
+  elseif stage == "large_damage" then
+    ui:beginShakeScreen(1)
+
+  elseif stage == "sound" then
+    -- Play the earthquake sound. It has different names depending on what the language contains.
+    if self.world.app.audio:soundExists("quake2.wav") then
+      ui:playSound("quake2.wav")
+    else
+      ui:playSound("quake.wav")
+    end
+  else
+    assert(false, "Unknown stage: " .. (stage or "nil"))
+  end
+end
+
+function PlayerHospital:afterLoad(old, new)
   if old < 146 then
     self.adviser_data = {
       temperature_advise = nil,
@@ -786,6 +837,11 @@ function PlayerHospital:afterLoad(old, new)
   if old < 159 then
     self.adviser_data.reception_advice = self.adviser_data.reception_advice or self.receptionist_msg
   end
+
+  -- Refresh the cheat system every load
+  local old_active_cheats = self.hosp_cheats and self.hosp_cheats.active_cheats or {}
+  self.hosp_cheats = Cheats(self)
+  self.hosp_cheats.active_cheats = old_active_cheats
 
   Hospital.afterLoad(self, old, new)
 end

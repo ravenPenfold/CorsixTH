@@ -311,8 +311,8 @@ function array_join(array, separator)
   return result
 end
 
-local function serialize_string(val)
-  local level = 0
+local function serialize_string(val, options)
+  local level = options and options.long_bracket_level_start or 0
   while string.find(val, ']' .. string.rep('=', level) .. ']') do
     level = level + 1
   end
@@ -391,17 +391,28 @@ end
 --!param options Option settings, table, 'detect_cycles' field boolean that
 --  ends recursion on a cycle, and 'max_depth' integer that ends recursion at the
 --  specified depth. By default initialized with "{detect_cycles = True}"
+--  'long_bracket_level_start' field integer that sets the starting long bracket level for escaping strings.
+--  If not set, level zero is used.
 --!param depth Recursion depth, should be omitted.
 --!param pt_reflist Seen nodes, should be omitted.
---!return The seralized output.
+--!return The serialized output.
 function serialize(val, options, depth, pt_reflist)
   if type(val) == "string" then
-    return serialize_string(val)
+    return serialize_string(val, options)
   elseif type(val) == "table" then
     return serialize_table(val, options, depth, pt_reflist)
   else
     return tostring(val)
   end
+end
+
+--! Simplified interface for serializing a value with option for depth
+-- See serialize for further explanation
+-- Output is dumped to the console
+--!param value A table or string to inspect
+--!param depth (num) Optional, defaults at 1
+function inspect(value, depth)
+  print(serialize(value, {detect_cycles = true, max_depth = depth or 1, pretty = true}))
 end
 
 -- Clones a table, but only the first level.

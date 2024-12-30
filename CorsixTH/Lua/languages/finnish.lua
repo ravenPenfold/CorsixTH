@@ -65,7 +65,7 @@ This file contains UTF-8 text. Make sure your editor is set to UTF-8.
 --   SECTION A - NEW STRINGS
 -------------------------------------------------------------------------------
 
--- 1. Global setings (do not edit!)
+-- 1. Global settings (do not edit!)
 Language("Suomi", "Finnish", "fi", "fin")
 Inherit("english")
 
@@ -301,7 +301,6 @@ tooltip = {
     height              = "Syötä peli-ikkunan haluttu korkeus",
     change_resolution   = "Muuta ikkunan resoluutio vasemmalla annettujen arvojen mukaiseksi",
     language            = "Valitse kieleksi %s",
-    original_path       = "Käytössä oleva Theme Hospital -pelin asennushakemisto",
     browse              = "Selaa hakemistoja valitaksesi uuden Theme Hospital -pelin asennushakemiston",
     back                = "Sulje tämä ikkuna",
   },
