@@ -37,8 +37,8 @@ end
 --! Initialises primary components of the room.
 -- Additionally, if there is already a room, e.g. it is being moved,
 -- we can just reinit it by calling this, not make a new one.
---!param x (co-ordinate) starting tile
---!param y (co-ordinate) starting tile
+--!param x (coordinate) starting tile
+--!param y (coordinate) starting tile
 --!param w (num) width of room
 --!param h (num) height of room
 --!param door (object) primary door for room
@@ -137,7 +137,23 @@ function Room:createEnterAction(humanoid_entering, callback)
   return WalkAction(x, y):setIsEntering(true)
 end
 
---! Get a patient in the room.
+--! Get a table of all patients using the room
+--! A room usually only has one patient, however in the ward can have multiple
+--! patients at once.
+--!return patients (table) All patients actively using the room
+function Room:getPatients()
+  local patients = {}
+  -- Are there patients using the room?
+  if self:getPatientCount() == 0 then return patients end
+  for humanoid in pairs(self.humanoids) do
+    if class.is(humanoid, Patient) then
+      patients[#patients + 1] = humanoid
+    end
+  end
+  return patients
+end
+
+--! Get any patient in the room.
 --!return A patient (humanoid) if there is a patient, nil otherwise.
 function Room:getPatient()
   for humanoid in pairs(self.humanoids) do
@@ -216,20 +232,6 @@ function Room:dealtWithPatient(patient)
   if self.dealt_patient_callback then
     self.dealt_patient_callback(self.waiting_staff_member)
   end
-  -- The staff member(s) might be needed somewhere else.
-  self:findWorkForStaff()
-end
-
---! Checks if the room still needs the staff in it and otherwise
--- sends them away if they're needed somewhere else.
-function Room:findWorkForStaff()
-  -- If the staff member is idle we can send him/her somewhere else
-  for humanoid in pairs(self.humanoids) do
-    -- Don't check handymen
-    if class.is(humanoid, Staff) and humanoid.humanoid_class ~= "Handyman" and humanoid:isIdle() then
-      self.world.dispatcher:answerCall(humanoid)
-    end
-  end
 end
 
 local profile_attributes = {
@@ -249,7 +251,8 @@ function Room:getMissingStaff(criteria)
       -- check if answering a call to another room
       if class.is(humanoid, Staff) and humanoid:fulfillsCriterion(attribute) and
           not humanoid:isLeaving() and not humanoid.fired and
-          not (humanoid.on_call and humanoid.on_call.object ~= self) then
+          not (humanoid.on_call and humanoid.on_call.object ~= self) and
+          not humanoid.going_to_staffroom then
         count = count - 1
       end
     end
@@ -354,42 +357,46 @@ function Room:onHumanoidEnter(humanoid)
   if class.is(humanoid, Staff) then
     -- If the room is already full of staff, or the staff member isn't relevant
     -- to the room, then make them leave. Otherwise, take control of them.
-    if not self:staffFitsInRoom(humanoid) then
-      if self:getStaffMember() and self:staffMeetsRoomRequirements(humanoid) then
-        local staff_member = self:getStaffMember()
-        self.humanoids[humanoid] = true
-          if staff_member.profile.is_researcher and self.room_info.id == "research" then
-            self.hospital:giveAdvice(researcher_desks)
-          end
-          if staff_member.humanoid_class == "Nurse" and self.room_info.id == "ward" then
-            self.hospital:giveAdvice(nurse_desks)
-          end
-        if not staff_member.dealing_with_patient then
-          staff_member:setNextAction(self:createLeaveAction())
-          staff_member:queueAction(MeanderAction())
-          self.staff_member = humanoid
-          humanoid:setCallCompleted()
-          self:commandEnteringStaff(humanoid)
+    local staff_entered = humanoid
+    if not self:staffFitsInRoom(staff_entered) then
+      if self:getStaffMember() and self:staffMeetsRoomRequirements(staff_entered) then
+        local staff_in_room = self:getStaffMember()
+        self.humanoids[staff_entered] = true
+        if staff_in_room.profile.is_researcher and self.room_info.id == "research" then
+          self.hospital:giveAdvice(researcher_desks)
+        end
+        if staff_in_room.humanoid_class == "Nurse" and self.room_info.id == "ward" then
+          self.hospital:giveAdvice(nurse_desks)
+        end
+        if not staff_in_room.dealing_with_patient or staff_in_room:isMeandering() then
+          -- Previous staff in the room not currently occupied by serving patient in room.
+          -- Send out the previous staff and appoint new one.
+          staff_in_room:setNextAction(self:createLeaveAction())
+          staff_in_room:queueAction(MeanderAction())
+          self.staff_member = staff_entered
+          staff_entered:setCallCompleted()
+          self:commandEnteringStaff(staff_entered)
         else
           if self.waiting_staff_member then
             self.waiting_staff_member.waiting_on_other_staff = nil
             self.waiting_staff_member:setNextAction(self:createLeaveAction())
             self.waiting_staff_member:queueAction(MeanderAction())
           end
-          self:createDealtWithPatientCallback(humanoid)
-          humanoid.waiting_on_other_staff = true
-          humanoid:setNextAction(MeanderAction())
+          self:createDealtWithPatientCallback(staff_entered)
+          staff_entered.waiting_on_other_staff = true
+          staff_entered:setNextAction(MeanderAction())
         end
       else
-        self.humanoids[humanoid] = true
-        humanoid:setNextAction(self:createLeaveAction())
-        humanoid:queueAction(MeanderAction())
-        humanoid:adviseWrongPersonForThisRoom()
+        -- Inappropriate staff for this room
+        self.humanoids[staff_entered] = true
+        staff_entered:setNextAction(self:createLeaveAction())
+        staff_entered:queueAction(MeanderAction())
+        staff_entered:adviseWrongPersonForThisRoom()
       end
     else
-      self.humanoids[humanoid] = true
-      humanoid:setCallCompleted()
-      self:commandEnteringStaff(humanoid)
+      self.humanoids[staff_entered] = true
+      staff_entered:setCallCompleted()
+      self:commandEnteringStaff(staff_entered)
     end
     self:tryAdvanceQueue()
     return
@@ -400,22 +407,23 @@ function Room:onHumanoidEnter(humanoid)
     -- An infect patient's disease may have changed so they might have
     -- been sent to an incorrect diagnosis room, they should leave and go
     -- back to the gp for redirection
-    if (humanoid.infected) and not humanoid.diagnosed and
-        not self:isDiagnosisRoomForPatient(humanoid) then
-      humanoid:queueAction(self:createLeaveAction())
-      humanoid.needs_redirecting = true
-      humanoid:queueAction(SeekRoomAction("gp"))
+    local patient_entered = humanoid
+    if patient_entered.infected and not patient_entered.diagnosed and
+        not self:isDiagnosisRoomForPatient(patient_entered) then
+      patient_entered:queueAction(self:createLeaveAction())
+      patient_entered.needs_redirecting = true
+      patient_entered:queueAction(SeekRoomAction("gp"))
       return
     end
     -- Check if the staff requirements are still fulfilled (the staff might have left / been picked up meanwhile)
     if self:testStaffCriteria(self:getRequiredStaffCriteria()) then
-      if self.staff_member  then
+      if self.staff_member then
         self:setStaffMembersAttribute("dealing_with_patient", true)
       end
-      self:commandEnteringPatient(humanoid)
+      self:commandEnteringPatient(patient_entered)
     else
-      humanoid:setNextAction(self:createLeaveAction())
-      humanoid:queueAction(self:createEnterAction(humanoid))
+      patient_entered:setNextAction(self:createLeaveAction())
+      patient_entered:queueAction(self:createEnterAction(patient_entered))
     end
   end
 end
@@ -490,16 +498,16 @@ end
 
 --! When a valid member of staff enters the room this function is called.
 -- Can be extended in derived classes.
---!param humanoid The staff in question
---!param already_initialized If true, this means that the staff has already got order
+--!param staff (object) The staff in question
+--!param already_initialized (bool) If true, this means that the staff has already got order
 -- what to do.
-function Room:commandEnteringStaff(humanoid, already_initialized)
+function Room:commandEnteringStaff(staff, already_initialized)
   if not already_initialized then
-    self.staff_member = humanoid
-    humanoid:setNextAction(MeanderAction())
+    self.staff_member = staff
+    staff:setNextAction(MeanderAction())
   end
   self:tryToFindNearbyPatients()
-  humanoid:setDynamicInfoText("")
+  staff:setDynamicInfoText("")
   -- This variable is used to avoid multiple calls for staff (sound played only)
   self.sound_played = nil
   if self:testStaffCriteria(self:getRequiredStaffCriteria()) then
@@ -541,14 +549,14 @@ function Room:_checkWaitToggleValidTarget()
       class.is(self.door.queue:front(), Patient)
 end
 
+--! Handle the patient coming into the room
+--! To be extended in derived classes.
+--!param humanoid The patient entering
 function Room:commandEnteringPatient(humanoid)
-  -- To be extended in derived classes
   self.door.queue.visitor_count = self.door.queue.visitor_count + 1
   humanoid:updateDynamicInfo("")
 
-  if self:_checkWaitToggleValidTarget() then
-    self:_staffWaitToggle(false) -- Staff no longer waiting
-  end
+  self:_staffWaitToggle(false) -- Staff no longer waiting
 end
 
 function Room:tryAdvanceQueue()
@@ -734,6 +742,30 @@ function Room:roomFinished()
   end
   self:tryAdvanceQueue()
   self:calculateHappinessFactor()
+end
+
+--! Private function to check for any patients outside the door queueing,
+--! or about to come in
+--!return (boolean) true if any patient wants to come in
+function Room:_arePatientsWantingToEnter()
+  local door = self.door
+  return (door.queue and door.queue:patientSize() > 0) or
+      (door.reserved_for and class.is(door.reserved_for, Patient)) or
+      (door.user and class.is(door.user, Patient) and door.user:getCurrentAction().is_entering)
+end
+
+--! Check if a room is actively required by patients
+--! A room is deemed in demand should any patient be in a state of using, or
+--! wanting to use the room.
+--!return (boolean) true if the room is currently needed
+function Room:isRoomInDemand()
+  if self:getPatientCount() > 0 then
+    -- Maybe a patient is using the room right now?
+    for _, patient in ipairs(self:getPatients()) do
+      if not patient:isLeaving() then return true end
+    end
+  end
+  return self:_arePatientsWantingToEnter()
 end
 
 --! Try to move a patient from the old room to the new room.

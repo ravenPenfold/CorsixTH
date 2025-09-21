@@ -22,6 +22,7 @@ Font("unicode")
 Language("Українська", "Ukrainian", "uk", "ukr")
 Inherit("english")
 Encoding(utf8)
+IsArabicNumerals(true)
 
 main_menu = {
   new_game = "Нова гра",
@@ -659,7 +660,7 @@ tooltip = {
   objects = {
     lamp = "Лампа: випромінює світло і дозволяє бачити хоч щось.",
     op_sink1 = "33 РАКОВИНА",
-    litter_bomb = "Замінований лист: саботує роботу лікарні конкурента",
+    litter_bomb = "Сміттєва бомба: саботує роботу лікарні конкурента",
     x_ray = "27 РЕНТГЕН",
     projector = "37 ПРОЕКТОР",
     radiation_shield = "28 ПРОТИРАДІАЦІЙНИЙ ЩИТ",

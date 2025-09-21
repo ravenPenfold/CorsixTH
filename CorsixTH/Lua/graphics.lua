@@ -117,38 +117,50 @@ function Graphics:Graphics(app)
 end
 
 --! Tries to load the font file given in the config file as unicode_font.
---! If it is not found it tries to find one in the operating system.
+--! If it is not found it tries to use the font file from the compile setting WITH_FONT,
+--!  or look for one in the CorsixTH folder, the grandparent of this file.
 function Graphics:loadFontFile()
   local lfs = require("lfs")
-  local function check(path) return path and lfs.attributes(path, "mode") == "file" end
-  -- Load the Unicode font, if there is one specified.
-  local config_path = self.app.config.unicode_font
-  -- Try a font that commonly comes with the operating system.
-  local os_path, font_file
-  local windir = os.getenv("WINDIR")
-  if windir and windir ~= "" then
-    os_path = windir .. pathsep .. "Fonts" .. pathsep .. "ARIALUNI.TTF"
-  elseif self.app.os == "macos" then
-    os_path = "/Library/Fonts/Arial Unicode.ttf"
-  else
-    os_path = "/usr/share/fonts/truetype/arphic/uming.ttc"
+  local function check(path) return lfs.attributes(path, "mode") == "file" end
+  local config_path, compile_path = self.app.config.unicode_font, TH.GetCompileOptions().font
+
+  local function getFontPath()
+    local config_err, compile_err = "", ""
+    if config_path then
+      if check(config_path) then return config_path
+      else config_err = "Configured font set but not found. Check path " .. config_path
+      end
+    end
+    if compile_path then
+      if check(compile_path) then return compile_path
+      else compile_err = " Compiled font path set but not found. Check path " .. compile_path
+      end
+    end
+    local path = self.app:getFullPath({})
+    for file in lfs.dir(path) do
+      for _, ext in pairs({"%.ttc$", "%.ttf$", "%.otc$", "%.otf$"}) do
+        if file:match(ext) then
+          return path .. file
+        end
+      end
+    end
+    return nil, config_err .. compile_err
   end
-  if check(config_path) then font_file = config_path
-  elseif check(os_path) then
-    font_file = os_path
-    print("Configured unicode font not found, using " .. font_file .. " instead.")
-    print("This will be written to the config file.")
-  elseif config_path ~= nil then
-    print("Configured unicode font not found, no fallback available.")
+  local font_file, err = getFontPath()
+  if not font_file then
+    print("Unicode font not found, no fallback available.", err)
     return
   end
-  local font = font_file and io.open(font_file, "rb")
+
+  local font = io.open(font_file, "rb")
   if font then
     self.ttf_font_data = font:read("*a")
     font:close()
-    if self.ttf_font_data and self.app.config.unicode_font ~= font_file then
+    if self.ttf_font_data and config_path ~= font_file then
       self.app.config.unicode_font = font_file
       self.app:saveConfig()
+      print("Configured unicode font not found, using " .. font_file .. " instead.")
+      print("This will be written to the config file.")
     end
   end
 end
@@ -336,14 +348,7 @@ function Graphics:hasLanguageFont(font)
     -- Original game fonts are always present.
     return true
   else
-    if not TH.freetype_font then
-      -- CorsixTH compiled without FreeType2 support, so even if suitable font
-      -- file exists, it cannot be loaded or drawn.
-      return false
-    end
-
     -- TODO: Handle more than one font
-
     return not not self.ttf_font_data
   end
 end
@@ -392,80 +397,128 @@ end
 function Graphics:loadMenuFont()
   local font
   if self.language_font then
-    font = self:loadFont("QData", "Font01V")
+    font = self:loadFontAndSpriteTable("QData", "Font01V")
   else
     font = self:loadBuiltinFont()
   end
   return font
 end
 
-function Graphics:loadLanguageFont(name, sprite_table, ...)
+local ttf_col_to_cache_key = function(ttf_col)
+  if ttf_col then
+    return string.format("r%d,g%d,b%d", ttf_col.red, ttf_col.green, ttf_col.blue)
+  else
+    return "nil"
+  end
+end
+
+local language_font_cache_key = function(name, x_sep, y_sep, ttf_col, force_bitmap)
+  return string.format("%s,%d,%d,%s,%s", name or "nil", x_sep or 0, y_sep or 0,
+    ttf_col_to_cache_key(ttf_col), force_bitmap and "T" or "F")
+end
+
+--! Load a true type font
+--!
+--!param name (string) The name of the font from the language file. Always 'unicode'.
+--!param sprite_table (userdata) The sprite table of the font this font is replacing. Used for default colour and metrics.
+--!param x_sep (int) Unused on ttf for now, controls the horizontal separation of the font for bitmap fonts.
+--!param y_sep (int) Unused on ttf for now, controls the vertical separation of the font for bitmap fonts.
+--!param ttf_col (colour in form .red, .green and .blue) The colour of the font.
+--  If nil, the colour will be detected from the sprite table.
+--!param force_bitmap (boolean) Whether to force the font to be a bitmap font.
+function Graphics:loadLanguageFont(name, sprite_table, x_sep, y_sep, ttf_col, force_bitmap)
   local font
   if name == nil then
-    font = self:loadFont(sprite_table, ...)
+    font = self:loadFont(sprite_table, x_sep, y_sep, ttf_col, force_bitmap)
   else
-    local cache = self.cache.language_fonts[name]
+    local cache_key = language_font_cache_key(name, x_sep, y_sep, ttf_col, force_bitmap)
+    local cache = self.cache.language_fonts[cache_key]
     font = cache and cache[sprite_table]
     if not font then
       font = TH.freetype_font()
       -- TODO: Choose face based on "name" rather than always using same face.
       font:setFace(self.ttf_font_data)
-      font:setSheet(sprite_table)
+      if ttf_col then
+        font:setSheet(sprite_table, ttf_col.red, ttf_col.green, ttf_col.blue)
+      else
+        font:setSheet(sprite_table)
+      end
       self.reload_functions_last[font] = font_reloader
 
       if not cache then
         cache = {}
-        self.cache.language_fonts[name] = cache
+        self.cache.language_fonts[cache_key] = cache
       end
       cache[sprite_table] = font
     end
   end
-  self.load_info[font] = {self.loadLanguageFont, self, name, sprite_table, ...}
+  self.load_info[font] = {self.loadLanguageFont, self, name, sprite_table, x_sep, y_sep, ttf_col, force_bitmap}
   return font
 end
 
-function Graphics:loadFont(sprite_table, x_sep, y_sep, ...)
-  -- Allow (multiple) arguments for loading a sprite table in place of the
-  -- sprite_table argument.
-  if type(sprite_table) == "string" then
-    local arg = {sprite_table, x_sep, y_sep, ...}
-    local n_pass_on_args = #arg
-    for i = 2, #arg do
-      if type(arg[i]) == "number" then -- x_sep
-        n_pass_on_args = i - 1
-        break
-      end
-    end
-    sprite_table = self:loadSpriteTable(unpack(arg, 1, n_pass_on_args))
-    if n_pass_on_args < #arg then
-      x_sep, y_sep = unpack(arg, n_pass_on_args + 1, #arg)
-    else
-      x_sep, y_sep = nil, nil
-    end
+--! Load a font and the corresponding sprite sheet in one operation.
+--!
+--! This is the same as calling loadFont(Graphics:loadSpriteTable(dir, name, complex, palette), x_sep, y_sep, ttf_col)
+--! except that force_bitmap is set to true automatically for some sprite tables.
+--!
+--!param dir (string) The directory of the sprite table relative to the HOSPITAL directory.
+--!param name (string) The name of the sprite table file without the .dat extension.
+--!param complex (boolean) Whether the sprite table is complex or not.
+--!param palette (string) The name of the palette file. If nil, the default palette will be used.
+--!param x_sep (integer) Controls the horizontal separation of the font for bitmap fonts.
+--!param y_sep (integer) Controls the vertical separation of the font for bitmap fonts.
+--!param ttf_col (colour in form .red, .green and .blue) The colour of the font if a true type font is loaded.
+--  If nil, the colour will be detected from the sprite table.
+function Graphics:loadFontAndSpriteTable(dir, name, complex, palette, x_sep, y_sep, ttf_col)
+  local sprite_table = self:loadSpriteTable(dir, name, complex, palette)
+  local force_bitmap = (name == "Font05V" and self:arabicNumerals())
+
+  return self:loadFont(sprite_table, x_sep, y_sep, ttf_col, force_bitmap)
+end
+
+--! Load a font for the given sprite table.
+--!
+--!param sprite_table (userdata) The sprite table of the font this font is replacing. Used for default colour and metrics.
+--!param x_sep (integer) Controls the horizontal separation of the font for bitmap fonts.
+--!param y_sep (integer) Controls the vertical separation of the font for bitmap fonts.
+--!param ttf_col (colour in form .red, .green and .blue) The colour of the font if a true type font is loaded.
+--  If nil, the colour will be detected from the sprite table.
+--!param force_bitmap (boolean) Whether to force the font to be a bitmap font.
+function Graphics:loadFont(sprite_table, x_sep, y_sep, ttf_col, force_bitmap)
+
+  -- afterLoad fix. Saves before 215 would double the y_sep argument, but did not have ttf_col
+  if type(ttf_col) == "number" then
+    ttf_col = nil
   end
 
-  local use_bitmap_font = true
-  if not sprite_table:isVisible(46) then -- luacheck: ignore 542
-    -- The font doesn't contain an uppercase M, so (in all likelihood) is used
-    -- for drawing special symbols rather than text, so the original bitmap
-    -- font should be used.
-  elseif self.language_font then
-    use_bitmap_font = false
-  end
+  -- Use a bitmap font if forced, or the language uses bitmap, or the
+  -- sprite_table has no M in it, indicating it's probably a symbol file.
+  local use_bitmap_font = force_bitmap or not self.language_font or not sprite_table:isVisible(46)
   local font
   if use_bitmap_font then
     font = TH.bitmap_font()
     font:setSeparation(x_sep or 0, y_sep or 0)
     font:setSheet(sprite_table)
   else
-    font = self:loadLanguageFont(self.language_font, sprite_table)
+    font = self:loadLanguageFont(self.language_font, sprite_table, x_sep, y_sep, ttf_col, force_bitmap)
   end
   -- A change of language might cause the font to change between bitmap and
   -- freetype, so wrap it in a proxy object which allows the actual object to
   -- be changed easily.
-  font = setmetatable({_proxy = font}, font_proxy_mt)
-  self.load_info[font] = {self.loadFont, self, sprite_table, x_sep, y_sep, ...}
+  font = setmetatable({ _proxy = font }, font_proxy_mt)
+  self.load_info[font] = { self.loadFont, self, sprite_table, x_sep, y_sep, ttf_col, force_bitmap }
   return font
+end
+
+function Graphics:arabicNumerals()
+  local strings = self.app.strings
+  local language = self.app.config.language
+  local arabic_numerals = strings:isArabicNumerals(language)
+  return arabic_numerals
+end
+
+function Graphics:drawNumbersFromUnicode()
+  return self.language_font and not self:arabicNumerals()
 end
 
 function Graphics:loadAnimations(dir, prefix)
@@ -566,90 +619,159 @@ function AnimationManager:setAnimLength(anim, length)
 end
 
 function AnimationManager:getAnimLength(anim)
-  local anims = self.anims
   if not self.anim_length_cache[anim] then
     local length = 0
     local seen = {}
-    local frame = anims:getFirstFrame(anim)
+    local frame = self.anims:getFirstFrame(anim)
     while not seen[frame] do
       seen[frame] = true
       length = length + 1
-      frame = anims:getNextFrame(frame)
+      frame = self.anims:getNextFrame(frame)
     end
     self.anim_length_cache[anim] = length
   end
   return self.anim_length_cache[anim]
 end
 
---[[ Markers can be set using a variety of different arguments:
-  setMarker(anim_number, position)
-  setMarker(anim_number, start_position, end_position)
-  setMarker(anim_number, keyframe_1, keyframe_1_position, keyframe_2, ...)
+--[[ A marker position can be used to indicate the position of en entity in the
+  frame of an animation relative to the position of drawing the animation.
 
-  position should be a table; {x, y} for a tile position, {x, y, "px"} for a
-  pixel position, with (0, 0) being the origin in both cases.
+  The marker position is used to display a humanoid in the circular area of its
+  window. It is also used to position mood icons or smoke of a machine above
+  the entity.
 
-  The first variant of setMarker sets the same marker for each frame.
-  The second variant does linear interpolation of the two positions between
-  the first frame and the last frame.
-  The third variant does linear interpolation between keyframes, and then the
-  final position for frames after the last keyframe. The keyframe arguments
-  should be 0-based integers, as in the animation viewer.
+  There are two marker positions associated with each frame of an animation.
+  The primary marker is reserved for patients and machines. The secondary
+  marker is used for staff and other officials such as VIPs and inspectors.
+
+  Markers are set as part of the animation definitions of entities with code like
+
+  -- Sets the primary markers of all frames of an animation:
+  local anim_mgr = TheApp.animation_manager
+  anim_mgr:setPatientMarker(...)
+
+  -- Sets the secondary markers of all frames of an animation:
+  local anim_mgr = TheApp.animation_manager
+  anim_mgr:setStaffMarker(...)
+
+  Markers can be set using a variety of different arguments:
+  * set{Patient/Staff}Marker(anim_number, position)
+  * set{Patient/Staff}Marker(anim_number, {position1, position2, ..., positionN})
+  * set{Patient/Staff}Marker(anim_number, start_position, end_position)
+  * set{Patient/Staff}Marker(anim_number, keyframe_1, keyframe_1_position, keyframe_2, ...)
+
+  The 'position' should be a table; An {x, y} pair for a tile position or
+  {x, y, "px"} for a pixel position. In both cases the position should be the
+  humanoid centre at floor level, with the centre of the (0, 0) tile being the
+  origin in both cases.
+
+  The first variant of set{Patient,Staff}Marker sets the same marker for each frame.
+  The second variant of has a unique position for each frame. 'nil' can be used to
+  repeat the previous position.
+  The third variant does linear interpolation of the two positions between the first
+  frame and the last frame.
+  The fourth variant does linear interpolation between keyframes, and then the final
+  position for frames after the last keyframe. The keyframe arguments should be
+  0-based integers, as in the animation viewer.
 
   To set the markers for multiple animations at once, the anim_number argument
   can be a table, in which case the marker is set for all values in the table.
   Alternatively, the values function (defined in utility.lua) can be used in
   conjection with a for loop to set markers for multiple things.
+
+  The AnimView program can be used to easily obtain position information in frames.
 --]]
 
-function AnimationManager:setMarker(anim, ...)
-  return self:setMarkerRaw(anim, "setFrameMarker", ...)
+--! Define the centre of a patient at floor level in an animation.
+function AnimationManager:setPatientMarker(anim, ...)
+  self:_unfoldAnims(anim, "setFramePrimaryMarker", ...)
 end
 
-local function TableToPixels(t)
-  if t[3] == "px" then
-    return t[1], t[2]
+--! Define the centre of a staff member at floor level in an animation.
+function AnimationManager:setStaffMarker(anim, ...)
+  self:_unfoldAnims(anim, "setFrameSecondaryMarker", ...)
+end
+
+--! Convert a humanoid position to a pixel offset.
+--!param pos (table) Humanoid center position to convert. Is either a tile
+--  position of the form {x, y} with floating point numbers, or a pixel
+--  position of the form {x, y, "px"} with integer numbers. In both cases,
+--  the origin is at the center of tile (0, 0), at floor level.
+--!return (int, int) The computed offset wrt to the origin in pixels.
+local function positionToXy(pos)
+  if pos[3] == "px" then
+    return pos[1], pos[2]
   else
-    local x, y = Map:WorldToScreen(t[1] + 1, t[2] + 1)
+    local x, y = Map:WorldToScreen(pos[1] + 1, pos[2] + 1)
     return math.floor(x), math.floor(y)
   end
 end
 
-function AnimationManager:setMarkerRaw(anim, fn, arg1, arg2, ...)
+--! Unfold tables containing animation numbers.
+function AnimationManager:_unfoldAnims(anim, fn, ...)
+  if not anim then return end
+
   if type(anim) == "table" then
     for _, val in pairs(anim) do
-      self:setMarkerRaw(val, fn, arg1, arg2, ...)
+      self:_unfoldAnims(val, fn, ...)
     end
-    return
+  else
+    self:setMarkerRaw(anim, fn, ...)
   end
-  local tp_arg1 = type(arg1)
+end
+
+function AnimationManager:setMarkerRaw(anim, fn, arg1, arg2, ...)
   local anim_length = self:getAnimLength(anim)
-  local anims = self.anims
-  local frame = anims:getFirstFrame(anim)
+  local frame = self.anims:getFirstFrame(anim)
+
+  --! Set marker position for frame
+  --!param x1y1 (boolean) use values given by x1 and y1 only if true, otherwise use
+  -- linear interpolation between x1/y1 and x2/y2
+  --!param x1, y1, x2 (optional), y2 (optional) pixel positions
+  --!param n fraction between start and end frame of linear interpolation
+  local function setMarkerFramePosition(x1y1, x1, y1, x2, y2, n)
+    assert(type(x1) == "number" and type(y1) == "number",
+        "Anim " .. anim .. ", frame " .. frame .. " has missing marker position")
+    local pos_x = x1y1 and x1 or math.floor((x2 - x1) * n + x1)
+    local pos_y = x1y1 and y1 or math.floor((y2 - y1) * n + y1)
+    self.anims[fn](self.anims, frame, pos_x, pos_y)
+  end
+
+  local tp_arg1 = type(arg1)
   if tp_arg1 == "table" then
     if arg2 then
       -- Linear-interpolation positions
-      local x1, y1 = TableToPixels(arg1)
-      local x2, y2 = TableToPixels(arg2)
+      local x1, y1 = positionToXy(arg1)
+      local x2, y2 = positionToXy(arg2)
       for i = 0, anim_length - 1 do
-        local n = math.floor(i / (anim_length - 1))
-        anims[fn](anims, frame, (x2 - x1) * n + x1, (y2 - y1) * n + y1)
-        frame = anims:getNextFrame(frame)
+        local n = i / (anim_length - 1)
+        setMarkerFramePosition(false, x1, y1, x2, y2, n)
+        frame = self.anims:getNextFrame(frame)
+      end
+    elseif type(arg1[1]) == "table" then
+      -- A position for each frame.
+      local x, y
+      for rel_frame = 1, anim_length do
+        if arg1[rel_frame] then
+          x, y = positionToXy(arg1[rel_frame])
+        end
+        setMarkerFramePosition(true, x, y)
+        frame = self.anims:getNextFrame(frame)
       end
     else
       -- Static position
-      local x, y = TableToPixels(arg1)
+      local x, y = positionToXy(arg1)
       for _ = 1, anim_length do
-        anims[fn](anims, frame, x, y)
-        frame = anims:getNextFrame(frame)
+        setMarkerFramePosition(true, x, y)
+        frame = self.anims:getNextFrame(frame)
       end
     end
   elseif tp_arg1 == "number" then
-    -- Keyframe positions
+    -- Keyframe positions, using liner-interpolation
     local f1, x1, y1 = 0, 0, 0
     local args
     if arg1 == 0 then
-      x1, y1 = TableToPixels(arg2)
+      x1, y1 = positionToXy(arg2)
       args = {...}
     else
       args = {arg1, arg2, ...}
@@ -664,20 +786,18 @@ function AnimationManager:setMarkerRaw(anim, fn, arg1, arg2, ...)
       if not f2 then
         f2 = args[args_i]
         if f2 then
-          x2, y2 = TableToPixels(args[args_i + 1])
+          x2, y2 = positionToXy(args[args_i + 1])
           args_i = args_i + 2
         end
       end
       if f2 then
-        local n = math.floor((f - f1) / (f2 - f1))
-        anims[fn](anims, frame, (x2 - x1) * n + x1, (y2 - y1) * n + y1)
+        local n = (f - f1) / (f2 - f1)
+        setMarkerFramePosition(false, x1, y1, x2, y2, n)
       else
-        anims[fn](anims, frame, x1, y1)
+        setMarkerFramePosition(true, x1, y1)
       end
-      frame = anims:getNextFrame(frame)
+      frame = self.anims:getNextFrame(frame)
     end
-  elseif tp_arg1 == "string" then
-    error("TODO")
   else
     error("Invalid arguments to setMarker", 2)
   end

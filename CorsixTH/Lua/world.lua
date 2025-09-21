@@ -57,7 +57,6 @@ function World:World(app, free_build_mode)
   self.wall_types = app.walls
   self.object_types = app.objects
   self.anims = app.anims
-  self.animation_manager = app.animation_manager
   self.pathfinder = TH.pathfinder()
   self.pathfinder:setMap(app.map.th)
   self.entities = {} -- List of entities in the world.
@@ -91,7 +90,7 @@ function World:World(app, free_build_mode)
   self.floating_dollars = {}
   self.game_log = {} -- saves list of useful debugging information
   self.savegame_version = app.savegame_version -- Savegame version number
-  self.release_version = app:getVersion(self.savegame_version) -- Savegame release version (e.g. 0.60), or Trunk
+  self.release_version = app:getReleaseString() -- Savegame release version (e.g. 0.60), or Trunk
   -- Also preserve this throughout future updates.
   self.original_savegame_version = app.savegame_version
 
@@ -327,14 +326,14 @@ function World:calculateSpawnTiles()
     local xs = {}
     local ys = {}
     local x, y = edge.origin[1], edge.origin[2]
-    repeat
+    while not (x < 1 or x > w or y < 1 or y > h) do
       if self.pathfinder:isReachableFromHospital(x, y) then
         xs[#xs + 1] = x
         ys[#ys + 1] = y
       end
       x = x + edge.step[1]
       y = y + edge.step[2]
-    until x < 1 or x > w or y < 1 or y > h
+    end
 
     -- Choose at most 8 points for the edge
     local num = math.min(8, #xs)
@@ -451,7 +450,7 @@ function World:spawnPatient(hospital)
       self:_findClosestSpawnToDesk(hospital:getStaffedDesks(), spawns) or
       spawns[math.random(1, #spawns)]
 
-  local patient = self:newEntity("Patient", 2)
+  local patient = self:newEntity("Patient", 2, 1)
   patient:setDisease(disease)
   patient:setNextAction(SpawnAction("spawn", spawn_point))
   patient:setHospital(hospital)
@@ -463,7 +462,7 @@ end
 function World:spawnVIP(name)
   local hospital = self:getLocalPlayerHospital()
 
-  local vip = self:newEntity("Vip", 2)
+  local vip = self:newEntity("Vip", 2, 2)
   vip:setType("VIP")
   vip.name = name
   vip.enter_deaths = hospital.num_deaths
@@ -594,10 +593,6 @@ function World:setPlotOwner(parcel, owner)
     end
   end
   self.map.th:updateShadows()
-end
-
-function World:getAnimLength(anim)
-  return self.animation_manager:getAnimLength(anim)
 end
 
 -- Register a function to be called whenever a room has been deactivated (crashed or edited).
@@ -732,8 +727,8 @@ end
 
 --! Return true if the given speed the same as the current speed.
 function World:isCurrentSpeed(speed)
-  local numerator, denominator = unpack(tick_rates[speed])
-  return self.hours_per_tick == numerator and self.tick_rate == denominator
+  local hours_per_tick, tick_rate = unpack(tick_rates[speed])
+  return self.hours_per_tick == hours_per_tick and self.tick_rate == tick_rate
 end
 
 --! Return the name of the current speed, relating to a key in tick_rates.
@@ -760,19 +755,24 @@ function World:setSpeed(speed)
     self.user_actions_allowed = true
   end
 
-  local currentSpeed = self:getCurrentSpeed()
-  if currentSpeed ~= "Pause" and currentSpeed ~= "Speed Up" then
-    self.prev_speed = self:getCurrentSpeed()
+  local old_speed = self:getCurrentSpeed()
+  if old_speed ~= "Pause" and old_speed ~= "Speed Up" then
+    self.prev_speed = old_speed
   end
 
-  local was_paused = currentSpeed == "Pause"
-  local numerator, denominator = unpack(tick_rates[speed])
-  self.hours_per_tick = numerator
-  self.tick_rate = denominator
+  local was_paused = old_speed == "Pause"
+  local old_tick_rate = self.tick_rate or 1
+  local new_hours_per_tick, new_tick_rate = unpack(tick_rates[speed])
 
   if was_paused then
     TheApp.audio:onEndPause()
+    self.tick_timer = new_tick_rate
+  else
+    self.tick_timer = math.ceil((self.tick_timer or 0) / old_tick_rate * new_tick_rate)
   end
+
+  self.hours_per_tick = new_hours_per_tick
+  self.tick_rate = new_tick_rate
 
   -- Set the blue filter according to whether the user can build or not.
   TheApp.video:setBlueFilterActive(not self.user_actions_allowed and not self.ui:checkForMustPauseWindows())
@@ -1089,21 +1089,36 @@ end
 -- TODO: Requires adjustment for AIHospital spawns; see PR 1986 for progress.
 function World:updateSpawnDates()
   local local_hospital = self:getLocalPlayerHospital()
-  -- Set dates when people arrive
-  local no_of_spawns = math.n_random(self.spawn_rate, 2)
-  -- Use ceil so that at least one patient arrives (unless population = 0)
-  no_of_spawns = math.ceil(no_of_spawns*self:getLocalPlayerHospital().population)
+
+  -- Decide on number of visitors
+  local no_of_spawns = self.spawn_rate * local_hospital.population
   -- If Roujin's Challenge is on, add a fixed bonus to the spawn pool for this player.
   if local_hospital.hosp_cheats:isCheatActive("spawn_rate_cheat") then
     local roujin_bonus = 40
     no_of_spawns = no_of_spawns + roujin_bonus
   end
-
+  -- Compute expected number of patients that arrive while forcing an arrival
+  -- if feasible.
   self.spawn_dates = {}
-  for _ = 1, no_of_spawns do
-    -- We are interested in the next month, pick days from it at random.
-    local day = math.random(1, self.game_date:lastDayOfMonth())
-    self.spawn_dates[day] = self.spawn_dates[day] and self.spawn_dates[day] + 1 or 1
+
+  if local_hospital.population > 0 then
+    local day, last_day = 1, self.game_date:lastDayOfMonth()
+    local force_arrival = true -- Ensure a patient arrives.
+    local interval = last_day / no_of_spawns -- Lower interval = more visits.
+    while day <= last_day do
+      local x = math.p_random(interval)
+      day = day + x
+      if day <= last_day then
+        local count = self.spawn_dates[day]
+        self.spawn_dates[day] = count and count + 1 or 1
+        force_arrival = false
+      end
+    end
+
+    -- Give the poor user a patient this month anyway.
+    if force_arrival then
+      self.spawn_dates[math.floor(1 + math.random() * last_day)] = 1
+    end
   end
 end
 
@@ -1137,14 +1152,18 @@ function World:nextEmergency()
     self:scheduleRandomEmergency(control)
     return
   end
-  repeat
+
+  -- Find the next valid emergency entry
+  local valid_emergency = false
+  while not valid_emergency do
     local emer_num = self.next_emergency_no
-    -- Account for missing Level 3 emergency[5]
+    -- First, handle the missing Level 3 emergency[5]
     if not control[emer_num] and control[emer_num + 1] then
       emer_num = emer_num + 1
       self.next_emergency_no = emer_num
     end
     local emergency = control[emer_num]
+
     -- No more emergencies?
     if not emergency then
       self.next_emergency_month = 0
@@ -1152,9 +1171,12 @@ function World:nextEmergency()
       self.next_emergency = nil
       return
     end
+
+    -- Test the emergency's validity
     self.next_emergency = emergency
     self.next_emergency_no = self.next_emergency_no + 1
-  until self:computeNextEmergencyDates(emergency)
+    valid_emergency = self:computeNextEmergencyDates(emergency)
+  end
 end
 
 --! If a level file specifies random emergencies we make the next one as defined by the mean/variance given
@@ -1250,9 +1272,7 @@ function World:winGame(player_no)
       end
     end
     self.hospitals[player_no].game_won = true
-    if self:isCurrentSpeed("Speed Up") then
-      self:previousSpeed()
-    end
+    self:previousSpeed()
     self.ui.bottom_panel:queueMessage("information", message, nil, 0, 2, callback)
     self.ui.bottom_panel:openLastMessage()
   end
@@ -1284,13 +1304,14 @@ function World:getCampaignWinningText(player_no)
     text[3] = text[3]:format(_S.level_names[self.map.level_number + 1])
   else
     local campaign_info = self.campaign_info
-    local next_level_name
+    local next_level_name, next_level_info
     if campaign_info then
       for i, level in ipairs(campaign_info.levels) do
-        if self.map.level_number == level then
+        local filename = self.map.level_filename or self.map.level_number
+        if filename == level then
           has_next = i < #campaign_info.levels
           if has_next then
-            local next_level_info = TheApp:readLevelFile(campaign_info.levels[i + 1])
+            next_level_info = TheApp:readLevelFile(campaign_info.levels[i + 1], campaign_info.folder)
             if not next_level_info then
               return {_S.letter.campaign_level_missing:format(campaign_info.levels[i + 1]), "", ""},
                      _S.fax.choices.return_to_main_menu,
@@ -1305,12 +1326,15 @@ function World:getCampaignWinningText(player_no)
     local level_info = TheApp:readLevelFile(self.map.level_number)
     text[1] = _S.letter.dear_player:format(self.hospitals[player_no].name)
     if has_next then
-      text[2] = level_info.end_praise and level_info.end_praise:format(next_level_name) or _S.letter.campaign_level_completed:format(next_level_name)
-      text[3] = ""
+      if level_info.end_praise then
+        text[2] = level_info.end_praise:format(next_level_name)
+      else
+        text[2] = _S.letter.campaign_level_completed:format(next_level_name)
+      end
     else
       text[2] = campaign_info.winning_text and campaign_info.winning_text or _S.letter.campaign_completed
-      text[3] = ""
     end
+    text[3] = ""
   end
   if has_next then
     choice_text = _S.fax.choices.accept_new_level
@@ -1660,12 +1684,20 @@ function World:newFloatingDollarSign(patient, amount)
   self.floating_dollars[spritelist] = true
 end
 
-function World:newEntity(class, animation)
+--! Create a new entity.
+--!param class Class to use for the new entity.
+--!param animation (int)Initial animation to use.
+--!param mood_marker (int) Whether to use the first (default), or the second marker.
+function World:newEntity(class, animation, mood_marker)
+  mood_marker = mood_marker and mood_marker or 1
+  assert(mood_marker == 1 or mood_marker == 2, "mood_marker is neither 1 nor 2.")
+
   local th = TH.animation()
   th:setAnimation(self.anims, animation)
   local entity = _G[class](th)
   self.entities[#self.entities + 1] = entity
   entity.world = self
+  entity.mood_marker = mood_marker
   return entity
 end
 
@@ -2069,6 +2101,24 @@ function World:getRoomNameAndRequiredStaffName(room_id)
   return room_name, staff_name, StaffProfile.translateStaffClass(staff_name)
 end
 
+--! Gets a list of all the machines in the player's hospital.
+function World:getPlayerMachines()
+  local world = self
+  local hosp = world:getLocalPlayerHospital()
+  local playerMachines = {}
+
+  for _, entity in ipairs(world.entities) do
+    -- is entity a machine and not a slave (e.g. operating_table_b)
+    if class.is(entity, Machine) and not entity.master then
+      -- check if machine belongs to player hospital
+      if entity.hospital == hosp then
+        playerMachines[#playerMachines + 1] = entity
+      end
+    end
+  end
+  return playerMachines
+end
+
 --! Append a message to the game log.
 --!param message (string) The message to add.
 function World:gameLog(message)
@@ -2150,16 +2200,6 @@ end
 --!param old (integer) The old version of the save game.
 --!param new (integer) The current version of the save game format.
 function World:afterLoad(old, new)
-
-  if not self.original_savegame_version then
-    self.original_savegame_version = old
-  end
-  -- If the original save game version is considerably lower than the current, warn the player.
-  -- For 2024 release, bump cutoff from 20 to 25 pending new methods in PR2518
-  if new - 25 > self.original_savegame_version then
-    self.ui:addWindow(UIInformation(self.ui, {_S.information.very_old_save}))
-  end
-
   self:setUI(self.ui)
 
   -- insert global compatibility code here
@@ -2405,6 +2445,9 @@ function World:afterLoad(old, new)
     self:resetSideObjects()
   end
 
+  if old < 132 then
+    self.app = self.ui.app
+  end
   if old < 153 then
     -- Set the new variable next_emergency_date
     -- Also set the new variable next_emergency
@@ -2483,6 +2526,7 @@ function World:afterLoad(old, new)
   if old < 208 then -- Adjust game speed and tick rates
     local old_tick_rates
     if old < 183 then
+      -- Save is using tick rates before 0.68.0 (PR2494)
       old_tick_rates = {
         ["Pause"]              = {0, 1},
         ["Slowest"]            = {1, 9},
@@ -2490,8 +2534,10 @@ function World:afterLoad(old, new)
         ["Normal"]             = {1, 3},
         ["Max speed"]          = {1, 1},
         ["And then some more"] = {3, 1},
+        ["Speed Up"]           = {8, 1},
       }
     else
+      -- Save is using tick rates introduced during development post 0.68.0 (PR2688)
       old_tick_rates = {
         ["Pause"]              = {0, 1},
         ["Slowest"]            = {1, 28},
@@ -2506,13 +2552,23 @@ function World:afterLoad(old, new)
     for name, rate in pairs(old_tick_rates) do
       if rate[1] == self.hours_per_tick and rate[2] == self.tick_rate then
         found_speed = true
-        self:setSpeed(name)
+        -- Do not call setSpeed as the values below are mapped to old tick rates.
+        -- Instead, update manually.
+        self.hours_per_tick = tick_rates[name][1]
+        self.tick_rate = tick_rates[name][2]
+        -- There is also no need to run it afterward either
         break
       end
     end
+    -- No conversion available; reset instead
     if not found_speed then
+      self.hours_per_tick = tick_rates["Pause"][1]
+      self.tick_rate = tick_rates["Pause"][2]
       self:setSpeed("Normal")
     end
+  end
+  if old < 214 then
+    self.animation_manager = nil -- Use TheApp.animation_manager instead.
   end
 
   -- Fix the initial of staff names
@@ -2526,10 +2582,23 @@ function World:afterLoad(old, new)
     self:localiseInitial(staff.profile)
   end
 
+  -- Fix if game was saved with Speed Up
+  self:previousSpeed()
+
   self.earthquake:afterLoad(old, new)
+
+  -- Savegame version housekeeping
+  if not self.original_savegame_version then
+    self.original_savegame_version = old
+  end
+  -- If the original save game version is considerably lower than the current, ask
+  -- the player if they want to restart the level.
+  if TheApp:compareVersions(new, old, "release") > 2 then
+    TheApp:restart(_S.confirmation.very_old_save)
+  end
   self.savegame_version = new
-  self.release_version = TheApp:getVersion(new)
-  self.system_pause = false -- Reset flag on load
+  self.release_version = TheApp:getReleaseString(new)
+  self:setSystemPause(false) -- Reset flag on load
 end
 
 function World:playLoadedEntitySounds()
@@ -2610,6 +2679,7 @@ end
 --! Perform validity tests on the map in world
 --!return (string) The message relating to the first failed check
 function World:validateMap()
+  self.map.th:updatePathfinding()
   local spawn_points = self:calculateSpawnTiles()
   -- Do any passable tiles on the edge of the map have a path of
   -- passable tiles to the hospital

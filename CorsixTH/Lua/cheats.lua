@@ -52,6 +52,7 @@ function Cheats:Cheats(hospital)
     {name = "decrease_prices", func = self.cheatDecreasePrices},
     {name = "reset_death_count", func = self.cheatResetDeathCount},
     {name = "max_reputation",  func = self.cheatMaxReputation},
+    {name = "repair_all_machines", func = self.cheatRepairAllMachines},
   }
 
   self.active_cheats = {} -- Toggle cheat status
@@ -129,18 +130,17 @@ end
 
 --[[ Creates a new contagious patient in the hospital - potentially an epidemic]]
 function Cheats:cheatEpidemic()
-  if not self.hospital.epidemics_disabled then
-    return self.hospital:spawnContagiousPatient()
-  end
+  return self.hospital:spawnContagiousPatient()
 end
 
---! Toggles the possibility of epidemics
+--! Toggles the possibility of epidemics. Cancel any ongoing or preparing epidemics.
 function Cheats:cheatToggleEpidemic()
   local hosp, msg = self.hospital
   if hosp.epidemics_disabled then
     msg = _S.misc.epidemics_on
   else
     msg = _S.misc.epidemics_off
+    hosp:cancelEpidemics()
   end
   hosp.epidemics_disabled = not hosp.epidemics_disabled
   return true, msg
@@ -207,6 +207,25 @@ function Cheats:cheatDecreasePrices()
     else
       casebook.price = new_price
     end
+  end
+end
+
+function Cheats:cheatResetDeathCount()
+  self.hospital:resetDeathCount()
+end
+
+function Cheats:cheatMaxReputation()
+  local hosp = self.hospital
+  hosp:unconditionalChangeReputation(hosp.reputation_max)
+end
+
+--! Instantly repairs all of the player's machines (regardless of condition, without decreasing strength)
+function Cheats:cheatRepairAllMachines()
+  local world = self.hospital.world
+  local machines = world:getPlayerMachines()
+
+  for _, machine in ipairs(machines) do
+    machine:machineRepaired(machine:getRoom(), false)
   end
 end
 
@@ -307,13 +326,4 @@ function Cheats:toggleCheat(name)
   if cheatWindow then
     cheatWindow:updateCheatedStatus()
   end
-end
-
-function Cheats:cheatResetDeathCount()
-  self.hospital:resetDeathCount()
-end
-
-function Cheats:cheatMaxReputation()
-  local hosp = self.hospital
-  hosp:unconditionalChangeReputation(hosp.reputation_max)
 end

@@ -37,9 +37,9 @@ function UITownMap:UITownMap(ui)
     local palette = gfx:loadPalette("QData", "Town01V.pal", true)
 
     self.background = gfx:loadRaw("Town01V", 640, 480, "QData", "QData", "Town01V.pal", true)
-    self.info_font  = gfx:loadFont("QData", "Font34V", false, palette)
-    self.city_font = gfx:loadFont("QData", "Font31V", false, palette)
-    self.money_font = gfx:loadFont("QData", "Font05V")
+    self.info_font  = gfx:loadFontAndSpriteTable("QData", "Font34V", false, palette)
+    self.city_font = gfx:loadFontAndSpriteTable("QData", "Font31V", false, palette)
+    self.money_font = gfx:loadFontAndSpriteTable("QData", "Font05V")
     self.panel_sprites = gfx:loadSpriteTable("QData", "Town02V", true, palette)
   end) then
     ui:addWindow(UIInformation(ui, {_S.errors.dialog_missing_graphics}))
@@ -188,13 +188,13 @@ function UITownMap:draw(canvas, x, y)
   self.info_font:draw(canvas, radiators,    x +  95, y + 265)
 
   -- Heating costs
-  local heating_costs = app.config.free_build_mode and 0 or
+  local heating_costs = world.free_build_mode and 0 or
       math.floor(((hospital.heating.radiator_heat *10)* radiators)* 7.5)
   self.info_font:draw(canvas, ("%8i"):format(heating_costs),  x + 100, y + 355)
 
   -- Draw balance with temporary offset in unicode languages
   local offset_x, offset_y = 0, 0
-  if self.ui.app.gfx.language_font then
+  if self.ui.app.gfx:drawNumbersFromUnicode() then
     offset_x = 4
     offset_y = 2
   end
@@ -304,7 +304,7 @@ function UITownMap:draw(canvas, x, y)
       local owner_num = map.th:getPlotOwner(self.hover_plot)
       if owner_num == 0 then
         owner = _S.town_map.for_sale
-        price = app.config.free_build_mode and "$0" or
+        price = world.free_build_mode and "$0" or
             ("$" .. map:getParcelPrice(self.hover_plot))
       else
         owner = world.hospitals[owner_num].name
@@ -329,7 +329,7 @@ end
 function UITownMap:decreaseHeat()
   local h = self.ui.hospital
   local heat = math.floor(h.heating.radiator_heat * 10 + 0.5)
-  if not h.heating_broke then
+  if not h.heating.heating_broke then
     heat = math.max(heat - 1, 1)
     h.heating.radiator_heat = heat / 10
   end
@@ -338,7 +338,7 @@ end
 function UITownMap:increaseHeat()
   local h = self.ui.hospital
   local heat = math.floor(h.heating.radiator_heat * 10 + 0.5)
-  if not h.heating_broke then
+  if not h.heating.heating_broke then
     heat = math.min(heat + 1, 10)
     h.heating.radiator_heat = heat / 10
   end
@@ -362,8 +362,8 @@ function UITownMap:afterLoad(old, new)
     local gfx = TheApp.gfx
     local palette = gfx:loadPalette("QData", "Town01V.pal", true)
     self.background = gfx:loadRaw("Town01V", 640, 480, "QData", "QData", "Town01V.pal", true)
-    self.info_font = gfx:loadFont("QData", "Font34V", false, palette)
-    self.city_font = gfx:loadFont("QData", "Font31V", false, palette)
+    self.info_font = gfx:loadFontAndSpriteTable("QData", "Font34V", false, palette)
+    self.city_font = gfx:loadFontAndSpriteTable("QData", "Font31V", false, palette)
     self.panel_sprites = gfx:loadSpriteTable("QData", "Town02V", true, palette)
   end
 

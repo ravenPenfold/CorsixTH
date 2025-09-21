@@ -67,6 +67,11 @@ else()
   set(CORSIX_TH_ARCH ${CMAKE_SYSTEM_PROCESSOR})
 endif()
 
+# Set default value of font file in compile_opts.font
+if(WITH_FONT)
+  set(CORSIX_TH_FONT ${WITH_FONT})
+endif()
+
 # Ensure config.h is picked up by cmake - moving this into subdir cmake files will
 # prevent it applying to the CorsixTH project
 set(CorsixTH_generated_src_dir ${CMAKE_BINARY_DIR}/CorsixTH/Src/)
@@ -90,11 +95,11 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/Src)
 add_subdirectory(${PROJECT_SOURCE_DIR}/SrcUnshared)
 
 # Set language standard
-set_property(TARGET CorsixTH_lib PROPERTY CXX_STANDARD 14)
+set_property(TARGET CorsixTH_lib PROPERTY CXX_STANDARD 17)
 set_property(TARGET CorsixTH_lib PROPERTY CXX_EXTENSIONS OFF)
 set_property(TARGET CorsixTH_lib PROPERTY CXX_STANDARD_REQUIRED ON)
 
-set_property(TARGET CorsixTH PROPERTY CXX_STANDARD 14)
+set_property(TARGET CorsixTH PROPERTY CXX_STANDARD 17)
 set_property(TARGET CorsixTH PROPERTY CXX_EXTENSIONS OFF)
 set_property(TARGET CorsixTH PROPERTY CXX_STANDARD_REQUIRED ON)
 
@@ -116,7 +121,7 @@ else()
       message("Make sure the path is correctly defined or set the environment variable SDLDIR to the correct location")
     endif()
     # No need to specify sdl2main separately, the FindSDL.cmake file will take care of that. If not we get an error about it
-    target_link_libraries(CorsixTH PRIVATE ${SDL_LIBRARY})
+    target_link_libraries(CorsixTH_lib PUBLIC ${SDL_LIBRARY})
     message("  SDL2 found")
   else()
     message(FATAL_ERROR "Error: SDL2 library not found, it is required to build. Make sure the path is correctly defined or set the environment variable SDLDIR to the correct location")
@@ -127,11 +132,10 @@ endif()
 if(VCPKG_TARGET_TRIPLET)
   find_package(Lua CONFIG REQUIRED)
   target_link_libraries(CorsixTH_lib PUBLIC lua)
-  target_link_libraries(CorsixTH PRIVATE lua)
 else()
   find_package(Lua REQUIRED)
   if(Lua_FOUND OR LUA_FOUND)
-    target_link_libraries(CorsixTH PUBLIC ${LUA_LIBRARY})
+    target_link_libraries(CorsixTH_lib PUBLIC ${LUA_LIBRARY})
     include_directories(${LUA_INCLUDE_DIR})
     # Special link flags needed on macOS 64bit, according to: http://luajit.org/install.html
     # If these are not specified, luaL_newstate() returns NULL and we get this:
@@ -158,22 +162,20 @@ find_package(Threads)
 target_link_libraries(CorsixTH PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 
 # Find SDL_mixer
-if(CORSIX_TH_USE_SDL_MIXER)
-  if(VCPKG_TARGET_TRIPLET)
-    find_package(SDL2_mixer CONFIG REQUIRED)
-    target_link_libraries(
-      CorsixTH
-      PRIVATE
-        $<IF:$<TARGET_EXISTS:SDL2_mixer::SDL2_mixer>,SDL2_mixer::SDL2_mixer,SDL2_mixer::SDL2_mixer-static>)
+if(VCPKG_TARGET_TRIPLET)
+  find_package(SDL2_mixer CONFIG REQUIRED)
+  target_link_libraries(
+    CorsixTH_lib
+    PUBLIC
+      $<IF:$<TARGET_EXISTS:SDL2_mixer::SDL2_mixer>,SDL2_mixer::SDL2_mixer,SDL2_mixer::SDL2_mixer-static>)
+else()
+  find_package(SDL2_mixer REQUIRED)
+  if(SDLMIXER_FOUND)
+    target_link_libraries(CorsixTH_lib PUBLIC ${SDLMIXER_LIBRARY})
+    include_directories(${SDLMIXER_INCLUDE_DIR})
+    message("  SDL_mixer found")
   else()
-    find_package(SDL2_mixer REQUIRED)
-    if(SDLMIXER_FOUND)
-      target_link_libraries(CorsixTH PRIVATE ${SDLMIXER_LIBRARY})
-      include_directories(${SDLMIXER_INCLUDE_DIR})
-      message("  SDL_mixer found")
-    else()
-      message(FATAL_ERROR "Error: SDL_mixer library not found, even though it was selected to be included")
-    endif()
+    message(FATAL_ERROR "Error: SDL_mixer library not found, it is required to build")
   endif()
 endif()
 
@@ -181,7 +183,7 @@ endif()
 if(CORSIX_TH_USE_FFMPEG)
   find_package(FFmpeg COMPONENTS AVFORMAT AVCODEC AVUTIL SWSCALE SWRESAMPLE REQUIRED)
   if(FFMPEG_FOUND)
-    target_link_libraries(CorsixTH PRIVATE ${FFMPEG_LIBRARIES})
+    target_link_libraries(CorsixTH_lib PUBLIC ${FFMPEG_LIBRARIES})
     include_directories(${FFMPEG_INCLUDE_DIRS})
     if(APPLE)
       target_link_libraries(CorsixTH PRIVATE libz.dylib)
@@ -195,30 +197,28 @@ if(CORSIX_TH_USE_FFMPEG)
 endif()
 
 # Find Freetype2
-if(CORSIX_TH_USE_FREETYPE2)
-  if(VCPKG_TARGET_TRIPLET)
-    find_package(Freetype REQUIRED)
-    target_link_libraries(CorsixTH PRIVATE Freetype::Freetype)
-  else()
-    find_package(Freetype REQUIRED)
-    if(FREETYPE_FOUND)
-      target_link_libraries(CorsixTH PRIVATE ${FREETYPE_LIBRARIES})
-      include_directories(${FREETYPE_INCLUDE_DIRS})
-      if(APPLE)
-        target_link_libraries(CorsixTH PRIVATE libz.dylib)
-        target_link_libraries(CorsixTH PRIVATE libbz2.dylib)
-      endif()
-      message("  FreeType2 found")
-    else()
-      message(FATAL_ERROR "Error: FreeType2 library not found, even though it was selected to be used")
+if(VCPKG_TARGET_TRIPLET)
+  find_package(Freetype REQUIRED)
+  target_link_libraries(CorsixTH_lib PUBLIC Freetype::Freetype)
+else()
+  find_package(Freetype REQUIRED)
+  if(FREETYPE_FOUND)
+    target_link_libraries(CorsixTH_lib PUBLIC ${FREETYPE_LIBRARIES})
+    include_directories(${FREETYPE_INCLUDE_DIRS})
+    if(APPLE)
+      target_link_libraries(CorsixTH_lib PRIVATE libz.dylib)
+      target_link_libraries(CorsixTH_lib PRIVATE libbz2.dylib)
     endif()
+    message("  FreeType2 found")
+  else()
+    message(FATAL_ERROR "Error: FreeType2 library not found, it is required to build")
   endif()
 endif()
 
 if(WITH_UPDATE_CHECK)
   find_package(CURL REQUIRED COMPONENTS HTTPS SSL)
   if(CURL_FOUND)
-    target_link_libraries(CorsixTH PRIVATE CURL::libcurl)
+    target_link_libraries(CorsixTH_lib PRIVATE CURL::libcurl)
     message("  Curl found")
   else()
     message(FATAL_ERROR "Error: curl not found")
@@ -228,10 +228,10 @@ endif()
 if(CORSIX_TH_LINK_LUA_MODULES)
   message("Linking lua modules")
   find_package(unofficial-luafilesystem CONFIG REQUIRED)
-  target_link_libraries(CorsixTH PRIVATE unofficial::luafilesystem::lfs)
+  target_link_libraries(CorsixTH_lib PRIVATE unofficial::luafilesystem::lfs)
 
   find_package(unofficial-lpeg CONFIG REQUIRED)
-  target_link_libraries(CorsixTH PRIVATE unofficial::lpeg::lpeg)
+  target_link_libraries(CorsixTH_lib PRIVATE unofficial::lpeg::lpeg)
 
   add_custom_command(TARGET CorsixTH POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -245,16 +245,13 @@ else()
   message("Lua modules are not linked and will be loaded at runtime")
 endif()
 
-if(MSVC AND CORSIX_TH_USE_VLD)
-  find_package(VLD REQUIRED)
-  if(VLD_FOUND)
-    target_link_libraries(CorsixTH PRIVATE ${VLD_LIBRARY})
-    include_directories(CorsixTH PRIVATE ${VLD_INCLUDE_DIR})
-    message("  VLD found")
-  else()
-    message(FATAL_ERROR "Error: VLD Library not found, it is required to build when USE_VLD is set")
-  endif()
-endif()
+# Find libpng
+find_package(PNG REQUIRED)
+target_link_libraries(CorsixTH_lib PUBLIC PNG::PNG)
+
+# Find zlib
+find_package(ZLIB REQUIRED)
+target_link_libraries(CorsixTH_lib PUBLIC ZLIB::ZLIB)
 
 # Launch script to facilitate out of source builds
 if(USE_SOURCE_DATADIRS)
@@ -273,7 +270,6 @@ endif()
 if(ENABLE_UNIT_TESTS)
   message("Building Unit Tests")
   # Enable testing if set at this level so we can use CTest from the root of the build dir
-  enable_testing()
   add_subdirectory(${PROJECT_SOURCE_DIR}/CppTest)
 endif()
 

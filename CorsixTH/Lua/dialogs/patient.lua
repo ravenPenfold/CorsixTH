@@ -42,7 +42,7 @@ function UIPatient:UIPatient(ui, patient)
   self.height = 310
   self:setDefaultPosition(-20, 30)
   self.panel_sprites = app.gfx:loadSpriteTable("QData", "Req02V", true)
-  self.font = app.gfx:loadFont("QData", "Font74V") -- Font used in the treatment history
+  self.font = app.gfx:loadFontAndSpriteTable("QData", "Font74V") -- Font used in the treatment history
   self.patient = patient
   self.visible_diamond = ui:makeVisibleDiamond(75, 76)
 
@@ -146,7 +146,7 @@ function UIPatient:draw(canvas, x_, y_)
     return
   end
   local px, py = map:WorldToScreen(patient.tile_x, patient.tile_y)
-  local dx, dy = patient.th:getMarker()
+  local dx, dy = patient.th:getPrimaryMarker()
   px = px + dx - 37
   py = py + dy - 61
   -- If the patient is spawning or despawning, or just on the map edge, then
@@ -172,12 +172,13 @@ function UIPatient:draw(canvas, x_, y_)
 end
 
 --! List the treatments that were performed on the patient.
+-- This text is always capitalised.
 --!param canvas Destination to draw on.
 --!param x (int) X position of the top of the list.
 --!param y (int) Y position of the top of the list.
 function UIPatient:drawTreatmentHistory(canvas, x, y)
   for _, room in ipairs(self.patient.treatment_history) do
-    y = self.font:drawWrapped(canvas, room, x, y, 95)
+    y = self.font:drawWrapped(canvas, room:upper(), x, y, 95)
   end
 end
 

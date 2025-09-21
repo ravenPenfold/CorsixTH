@@ -65,11 +65,7 @@ function Audio:init()
   if self.not_loaded then
     return
   end
-  if not SDL.audio.loaded then
-    print("Notice: Audio system not loaded as CorsixTH compiled without it")
-    self.not_loaded = true
-    return
-  end
+
   local music = self.app.config.audio_music or self.app.config.audio_mp3
   local music_dir
   if music then
@@ -617,8 +613,8 @@ function Audio:playBackgroundTrack(index)
       end)
       return
     end
-    SDL.audio.setMusicVolume(self.app.config.music_volume)
     assert(SDL.audio.playMusic(music))
+    SDL.audio.setMusicVolume(self.app.config.music_volume)
     self.background_music = music
 
     self:notifyJukebox()

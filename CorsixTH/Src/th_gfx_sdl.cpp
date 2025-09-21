@@ -20,25 +20,30 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+#include "th_gfx_sdl.h"
+
 #include "config.h"
 
-#include "th_gfx.h"
-#ifdef CORSIX_TH_USE_FREETYPE2
-#include "th_gfx_font.h"
-#endif
+#include <SDL.h>
+#include <png.h>
+// IWYU pragma: no_include <pngconf.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <limits>
 #include <memory>
 #include <new>
+#include <stack>
 #include <stdexcept>
+#include <vector>
 
-#include "th_map.h"
+#include "persist_lua.h"
+#include "th_gfx.h"
+#include "th_gfx_common.h"
+#include "th_gfx_font.h"
 
 #if SDL_VERSION_ATLEAST(2, 0, 10)
 
@@ -56,10 +61,7 @@ const float frect_overdraw = 0.01f;
 #endif
 
 full_colour_renderer::full_colour_renderer(int iWidth, int iHeight)
-    : width(iWidth), height(iHeight) {
-  x = 0;
-  y = 0;
-}
+    : width(iWidth), height(iHeight) {}
 
 namespace {
 
@@ -209,8 +211,6 @@ class scoped_color_mod {
 };
 
 }  // namespace
-
-palette::palette() { colour_count = 0; }
 
 bool palette::load_from_th_file(const uint8_t* pData, size_t iDataLength) {
   if (iDataLength != 256 * 3) return false;
@@ -366,103 +366,78 @@ void wx_storing::store_argb(uint32_t pixel) {
   *alpha_data++ = palette::get_alpha(pixel);
 }
 
-class render_target::scoped_target_texture
-    : public render_target::scoped_buffer {
- public:
-  scoped_target_texture(render_target* pTarget, int iX, int iY, int iWidth,
-                        int iHeight, bool bScale)
-      : target(pTarget),
-        previous_target(target->current_target),
-        rect({iX, iY, iWidth, iHeight}),
-        scale(bScale) {
-    if (!target->supports_target_textures) return;
+render_target::scoped_target_texture::scoped_target_texture(
+    render_target* pTarget, int iX, int iY, int iWidth, int iHeight,
+    bool bScale)
+    : target(pTarget),
+      previous_target(target->current_target),
+      rect({iX, iY, iWidth, iHeight}),
+      scale(bScale) {
+  if (!target->supports_target_textures) return;
 
-    texture = SDL_CreateTexture(target->renderer, SDL_PIXELFORMAT_ABGR8888,
-                                SDL_TEXTUREACCESS_TARGET, iWidth, iHeight);
-    if (SDL_SetRenderTarget(target->renderer, texture) != 0) {
-      SDL_DestroyTexture(texture);
-      texture = nullptr;
-      return;
-    }
-
-    // Clear the new texture to transparent/black.
-    SDL_RenderSetLogicalSize(target->renderer, rect.w, rect.h);
-    SDL_SetRenderDrawColor(target->renderer, 0, 0, 0, SDL_ALPHA_TRANSPARENT);
-    SDL_RenderClear(target->renderer);
-    target->current_target = this;
+  texture = SDL_CreateTexture(target->renderer, SDL_PIXELFORMAT_ABGR8888,
+                              SDL_TEXTUREACCESS_TARGET, iWidth, iHeight);
+  if (SDL_SetRenderTarget(target->renderer, texture) != 0) {
+    SDL_DestroyTexture(texture);
+    texture = nullptr;
+    return;
   }
 
-  void offset(SDL_FRect& targetRect) {
-    targetRect.x -= static_cast<SDL_FRECT_UNIT>(rect.x);
-    targetRect.y -= static_cast<SDL_FRECT_UNIT>(rect.y);
+  // Clear the new texture to transparent/black.
+  SDL_RenderSetLogicalSize(target->renderer, rect.w, rect.h);
+  SDL_SetRenderDrawColor(target->renderer, 0, 0, 0, SDL_ALPHA_TRANSPARENT);
+  SDL_RenderClear(target->renderer);
+  target->current_target = this;
+}
+
+void render_target::scoped_target_texture::offset(SDL_FRect& targetRect) const {
+  targetRect.x -= static_cast<SDL_FRECT_UNIT>(rect.x);
+  targetRect.y -= static_cast<SDL_FRECT_UNIT>(rect.y);
+}
+
+double render_target::scoped_target_texture::scale_factor() const {
+  return scale ? target->global_scale_factor : 1.0;
+}
+
+bool render_target::scoped_target_texture::is_target() const { return texture; }
+
+render_target::scoped_target_texture::~scoped_target_texture() {
+  if (!texture) return;
+
+  // Restore previous context.
+  SDL_SetRenderTarget(target->renderer,
+                      previous_target ? previous_target->texture : nullptr);
+  SDL_RenderSetLogicalSize(
+      target->renderer,
+      previous_target ? previous_target->rect.w : target->width,
+      previous_target ? previous_target->rect.h : target->height);
+  SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+  target->current_target = previous_target;
+  if (scale) {
+    // If the target texture is already scaled, skip the global scale factor
+    // by drawing directly.
+    SDL_RenderCopy(target->renderer, texture, nullptr, &rect);
+  } else {
+    target->draw(texture, nullptr, &rect, 0);
   }
+  target->intermediate_textures.push_back(texture);
+}
 
-  double scale_factor() { return scale ? target->global_scale_factor : 1.0; }
-
-  bool is_target() { return texture; }
-
-  ~scoped_target_texture() override {
-    if (!texture) return;
-
-    // Restore previous context.
-    SDL_SetRenderTarget(target->renderer,
-                        previous_target ? previous_target->texture : nullptr);
-    SDL_RenderSetLogicalSize(
-        target->renderer,
-        previous_target ? previous_target->rect.w : target->width,
-        previous_target ? previous_target->rect.h : target->height);
-    SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
-    target->current_target = previous_target;
-    if (scale) {
-      // If the target texture is already scaled, skip the global scale factor
-      // by drawing directly.
-      SDL_RenderCopy(target->renderer, texture, nullptr, &rect);
-    } else {
-      target->draw(texture, nullptr, &rect, 0);
-    }
-    target->intermediate_textures.push_back(texture);
-  }
-
- private:
-  render_target* target;
-  scoped_target_texture* previous_target;
-  SDL_Rect rect;
-  bool scale;
-  SDL_Texture* texture = nullptr;
-};
-
-render_target::render_target()
-    : window(nullptr),
-      renderer(nullptr),
-      pixel_format(nullptr),
-      blue_filter_active(false),
-      game_cursor(nullptr),
-      global_scale_factor(1.0),
-      width(-1),
-      height(-1),
-      scale_bitmaps(false),
-      apply_opengl_clip_fix(false),
-      direct_zoom(false) {}
-
-render_target::~render_target() { destroy(); }
-
-bool render_target::create(const render_target_creation_params* pParams) {
-  if (renderer != nullptr) return false;
-
-  direct_zoom = pParams->direct_zoom;
-
+render_target::render_target(const render_target_creation_params& params)
+    : width(params.width),
+      height(params.height),
+      direct_zoom(params.direct_zoom) {
   SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
   pixel_format = SDL_AllocFormat(SDL_PIXELFORMAT_ABGR8888);
-  window =
-      SDL_CreateWindow("CorsixTH", SDL_WINDOWPOS_UNDEFINED,
-                       SDL_WINDOWPOS_UNDEFINED, pParams->width, pParams->height,
-                       SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+  window = SDL_CreateWindow("CorsixTH", SDL_WINDOWPOS_UNDEFINED,
+                            SDL_WINDOWPOS_UNDEFINED, width, height,
+                            SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
   if (!window) {
-    return false;
+    throw std::runtime_error(SDL_GetError());
   }
 
   Uint32 iRendererFlags =
-      (pParams->present_immediate ? 0 : SDL_RENDERER_PRESENTVSYNC);
+      (params.present_immediate ? 0 : SDL_RENDERER_PRESENTVSYNC);
   renderer = SDL_CreateRenderer(window, -1, iRendererFlags);
 
   SDL_RendererInfo info;
@@ -476,38 +451,10 @@ bool render_target::create(const render_target_creation_params* pParams) {
                           sdlVersion.patch < 4;
   SDL_SetWindowMinimumSize(window, 640, 480);
 
-  return update(pParams);
+  update(params);
 }
 
-bool render_target::update(const render_target_creation_params* pParams) {
-  if (window == nullptr) {
-    return false;
-  }
-
-  bool bUpdateSize = (width != pParams->width) || (height != pParams->height);
-  width = pParams->width;
-  height = pParams->height;
-
-  bool bIsFullscreen =
-      ((SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP) ==
-       SDL_WINDOW_FULLSCREEN_DESKTOP);
-  if (bIsFullscreen != pParams->fullscreen) {
-    SDL_SetWindowFullscreen(
-        window, (pParams->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
-  }
-
-  if (bUpdateSize || bIsFullscreen != pParams->fullscreen) {
-    SDL_SetWindowSize(window, width, height);
-  }
-
-  if (bUpdateSize) {
-    SDL_RenderSetLogicalSize(renderer, width, height);
-  }
-
-  return true;
-}
-
-void render_target::destroy() {
+render_target::~render_target() {
   zoom_buffer.reset();
   destroy_intermediate_textures();
 
@@ -525,6 +472,30 @@ void render_target::destroy() {
     SDL_DestroyWindow(window);
     window = nullptr;
   }
+}
+
+bool render_target::update(const render_target_creation_params& params) {
+  bool bUpdateSize = (width != params.width) || (height != params.height);
+  width = params.width;
+  height = params.height;
+
+  bool bIsFullscreen =
+      ((SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP) ==
+       SDL_WINDOW_FULLSCREEN_DESKTOP);
+  if (bIsFullscreen != params.fullscreen) {
+    SDL_SetWindowFullscreen(
+        window, (params.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
+  }
+
+  if (bUpdateSize || bIsFullscreen != params.fullscreen) {
+    SDL_SetWindowSize(window, width, height);
+  }
+
+  if (bUpdateSize) {
+    SDL_RenderSetLogicalSize(renderer, width, height);
+  }
+
+  return true;
 }
 
 bool render_target::set_scale_factor(double fScale, scaled_items eWhatToScale) {
@@ -556,7 +527,7 @@ bool render_target::set_scale_factor(double fScale, scaled_items eWhatToScale) {
     if (!zoom_buffer->is_target()) {
       global_scale_factor = 1.0;
       std::cout << "Warning: Could not render to zoom texture - "
-                << SDL_GetError() << std::endl;
+                << SDL_GetError() << "\n";
 
       return false;
     }
@@ -589,7 +560,7 @@ const char* render_target::get_renderer_details() const {
 const char* render_target::get_last_error() { return SDL_GetError(); }
 
 bool render_target::start_frame() {
-  // Destroy any intermediate texures used last frame.
+  // Destroy any intermediate textures used last frame.
   destroy_intermediate_textures();
 
   fill_black();
@@ -625,7 +596,7 @@ void render_target::set_blue_filter_active(bool bActivate) {
   blue_filter_active = bActivate;
 }
 
-// Actiate and Deactivate SDL function to capture mouse to window
+// Activate or Deactivate SDL function to capture mouse to window
 void render_target::set_window_grab(bool bActivate) {
   SDL_SetWindowGrab(window, bActivate ? SDL_TRUE : SDL_FALSE);
 }
@@ -718,7 +689,85 @@ void render_target::set_cursor_position(int iX, int iY) {
   cursor_y = iY;
 }
 
-bool render_target::take_screenshot(const char* sFile) {
+namespace {
+
+//! Error function called when PNG writing fails.
+void png_error(png_structp png_data, const char* message) { throw(0); }
+
+//! Class for managing lifetime of the data structures for saving a PNG file.
+class png_data_manager {
+ public:
+  png_structp png_write_data{nullptr};
+  png_infop info_write_data{nullptr};
+  png_bytepp row_pointers{nullptr};
+  FILE* fp{nullptr};
+
+  ~png_data_manager() {
+    if (png_write_data != nullptr || info_write_data != nullptr) {
+      png_destroy_write_struct(&png_write_data, &info_write_data);
+    }
+    if (row_pointers != nullptr) {
+      delete[] row_pointers;
+    }
+    if (fp != nullptr) {
+      std::fclose(fp);
+    }
+  }
+};
+
+//! Function to write the pixels to the given file as PNG image.
+bool write_rgb_png(int width, int height, png_bytep pixels, int pitch,
+                   const char* file_path) {
+  png_data_manager png_storage;
+
+  // Create PNG writer and info data structures.
+  png_storage.png_write_data = png_create_write_struct(
+      PNG_LIBPNG_VER_STRING, (png_voidp)png_error, nullptr, nullptr);
+  if (png_storage.png_write_data == nullptr) {
+    return false;
+  }
+  png_storage.info_write_data =
+      png_create_info_struct(png_storage.png_write_data);
+  if (png_storage.info_write_data == nullptr) {
+    return false;
+  }
+
+  // Allocate and setup row pointers to the pixels.
+  png_storage.row_pointers = new (std::nothrow) png_bytep[height];
+  if (png_storage.row_pointers == nullptr) {
+    return false;
+  }
+  {
+    png_bytep rp = pixels;
+    for (int h = 0; h < height; h++) {
+      png_storage.row_pointers[h] = rp;
+      rp += pitch;
+    }
+  }
+
+  // Open the file for writing.
+  png_storage.fp = std::fopen(file_path, "wb");
+  if (png_storage.fp == nullptr) {
+    return false;
+  }
+
+  // Configure what to write.
+  png_init_io(png_storage.png_write_data, png_storage.fp);
+  png_set_IHDR(png_storage.png_write_data, png_storage.info_write_data, width,
+               height, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
+               PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+  png_set_rows(png_storage.png_write_data, png_storage.info_write_data,
+               png_storage.row_pointers);
+
+  // Write the image while swapping red and blue channels.
+  png_write_png(png_storage.png_write_data, png_storage.info_write_data,
+                PNG_TRANSFORM_BGR, nullptr);
+  return true;
+}
+
+}  // namespace
+
+bool render_target::take_screenshot(const char* file_path) const {
   int width = 0, height = 0;
   if (SDL_GetRendererOutputSize(renderer, &width, &height) == -1) return false;
 
@@ -726,6 +775,8 @@ bool render_target::take_screenshot(const char* sFile) {
   SDL_Surface* pRgbSurface =
       SDL_CreateRGBSurface(0, width, height, 24, 0, 0, 0, 0);
   if (pRgbSurface == nullptr) return false;
+
+  bool ok = false;
 
   int readStatus = -1;
   if (SDL_LockSurface(pRgbSurface) != -1) {
@@ -736,12 +787,21 @@ bool render_target::take_screenshot(const char* sFile) {
                              pRgbSurface->pixels, pRgbSurface->pitch);
     SDL_UnlockSurface(pRgbSurface);
 
-    if (readStatus != -1) SDL_SaveBMP(pRgbSurface, sFile);
+    if (readStatus != -1) {
+      try {
+        write_rgb_png(width, height,
+                      static_cast<png_bytep>(pRgbSurface->pixels),
+                      pRgbSurface->pitch, file_path);
+        ok = true;
+      } catch (int) {
+        ok = false;  // Not needed, but clang-tidy wants it.
+      }
+    }
   }
 
   SDL_FreeSurface(pRgbSurface);
 
-  return (readStatus != -1);
+  return ok;
 }
 
 bool render_target::should_scale_bitmaps(double* pFactor) {
@@ -858,8 +918,11 @@ void render_target::draw(SDL_Texture* pTexture, const SDL_Rect* prcSrcRect,
   getScaleRect(prcDstRect, draw_scale(), &scaledDstRect);
   if (current_target) current_target->offset(scaledDstRect);
   if (iSDLFlip != 0) {
+    // iSDLFlip may be 3 (HORIZONTAL | VERTICAL) but there is no enum value for
+    // that
     SDL_RenderCopyExF(renderer, pTexture, prcSrcRect, &scaledDstRect, 0,
-                      nullptr, (SDL_RendererFlip)iSDLFlip);
+                      nullptr,
+                      (SDL_RendererFlip)iSDLFlip);  // NOLINT
   } else {
     SDL_RenderCopyF(renderer, pTexture, prcSrcRect, &scaledDstRect);
   }
@@ -905,14 +968,6 @@ void render_target::destroy_intermediate_textures() {
     SDL_DestroyTexture(texture);
   }
   intermediate_textures.clear();
-}
-
-raw_bitmap::raw_bitmap() {
-  texture = nullptr;
-  bitmap_palette = nullptr;
-  target = nullptr;
-  width = 0;
-  height = 0;
 }
 
 raw_bitmap::~raw_bitmap() {
@@ -1027,13 +1082,6 @@ void raw_bitmap::draw(render_target* pCanvas, int iX, int iY, int iSrcX,
   pCanvas->draw(texture, &rcSrc, &rcDest, 0);
 }
 
-sprite_sheet::sprite_sheet() {
-  sprites = nullptr;
-  palette = nullptr;
-  target = nullptr;
-  sprite_count = 0;
-}
-
 sprite_sheet::~sprite_sheet() { _freeSprites(); }
 
 void sprite_sheet::_freeSingleSprite(size_t iNumber) {
@@ -1092,6 +1140,28 @@ bool sprite_sheet::set_sprite_count(size_t iCount, render_target* pCanvas) {
   return true;
 }
 
+//! Sprite structure in the table file.
+/*!
+    https://github.com/CorsixTH/theme-hospital-spec/blob/master/format-specification.md#spritetable
+*/
+struct th_sprite_properties {
+  static constexpr size_t size = 6;
+
+  explicit th_sprite_properties(const uint8_t* pData)
+      : position{bytes_to_uint32_le(pData)},
+        width{pData[4]},
+        height{pData[5]} {}
+
+  //! Position of the sprite in the chunk data file.
+  uint32_t position;
+
+  //! Width of the sprite.
+  uint8_t width;
+
+  //! Height of the sprite.
+  uint8_t height;
+};
+
 bool sprite_sheet::load_from_th_file(const uint8_t* pTableData,
                                      size_t iTableDataLength,
                                      const uint8_t* pChunkData,
@@ -1101,35 +1171,33 @@ bool sprite_sheet::load_from_th_file(const uint8_t* pTableData,
   _freeSprites();
   if (pCanvas == nullptr) return false;
 
-  size_t iCount = iTableDataLength / sizeof(th_sprite_properties);
+  size_t iCount = iTableDataLength / th_sprite_properties::size;
   if (!set_sprite_count(iCount, pCanvas)) return false;
 
   for (size_t i = 0; i < sprite_count; ++i) {
     sprite* pSprite = sprites + i;
-    const th_sprite_properties* pTHSprite =
-        reinterpret_cast<const th_sprite_properties*>(pTableData) + i;
+    const th_sprite_properties thSprite(pTableData +
+                                        i * th_sprite_properties::size);
 
     pSprite->texture = nullptr;
     pSprite->alt_texture = nullptr;
     pSprite->data = nullptr;
     pSprite->alt_palette_map = nullptr;
-    pSprite->width = pTHSprite->width;
-    pSprite->height = pTHSprite->height;
+    pSprite->width = thSprite.width;
+    pSprite->height = thSprite.height;
 
     if (pSprite->width == 0 || pSprite->height == 0) continue;
 
     {
-      uint8_t* pData = new uint8_t[pSprite->width * pSprite->height];
-      chunk_renderer oRenderer(pSprite->width, pSprite->height, pData);
+      std::vector<uint8_t> pData(pSprite->width * pSprite->height);
+      chunk_renderer oRenderer(pSprite->width, pSprite->height, pData.begin());
       int iDataLen = static_cast<int>(iChunkDataLength) -
-                     static_cast<int>(pTHSprite->position);
+                     static_cast<int>(thSprite.position);
       if (iDataLen < 0) iDataLen = 0;
-      oRenderer.decode_chunks(pChunkData + pTHSprite->position, iDataLen,
+      oRenderer.decode_chunks(pChunkData + thSprite.position, iDataLen,
                               bComplexChunks);
-      pData = oRenderer.take_data();
       pSprite->data =
-          convertLegacySprite(pData, pSprite->width * pSprite->height);
-      delete[] pData;
+          convertLegacySprite(pData.data(), pSprite->width * pSprite->height);
     }
   }
   return true;
@@ -1217,7 +1285,7 @@ bool sprite_sheet::get_sprite_average_colour(size_t iSprite,
     double Y = 0.2126 * linR + 0.7152 * linG + 0.0722 * linB;
     // - Compute lightness L*.
     //   L* = 116 * Y ^ 1/3 - 16, range is from 0 to 100.
-    double L = std::min(100.0, std::max(0.0, 166 * std::cbrt(Y) - 16));
+    double L = std::min(100.0, std::max(0.0, 116 * std::cbrt(Y) - 16));
     uint8_t cIntensity = static_cast<uint8_t>(L / 100 * 255.0);
 
     // Grant higher score to pixels with high or low intensity (helps avoid
@@ -1235,6 +1303,18 @@ bool sprite_sheet::get_sprite_average_colour(size_t iSprite,
   }
   *pColour = palette->get_argb_data()[iHighestCountIndex];
   return true;
+}
+
+bool sprite_sheet::is_sprite_visible(size_t iSprite) const {
+  if (iSprite >= sprite_count) return false;
+
+  const sprite* pSprite = sprites + iSprite;
+  for (long i = 0; i < pSprite->width * pSprite->height; ++i) {
+    uint8_t cPalIndex = pSprite->data[i];
+    uint32_t iColour = palette->get_argb_data()[cPalIndex];
+    if ((iColour >> 24) != 0) return true;
+  }
+  return false;
 }
 
 void sprite_sheet::draw_sprite(render_target* pCanvas, size_t iSprite, int iX,
@@ -1473,13 +1553,6 @@ bool sprite_sheet::hit_test_sprite(size_t iSprite, int iX, int iY,
   return palette::get_alpha(iCol) != 0;
 }
 
-cursor::cursor() {
-  bitmap = nullptr;
-  hotspot_x = 0;
-  hotspot_y = 0;
-  hidden_cursor = nullptr;
-}
-
 cursor::~cursor() {
   SDL_FreeSurface(bitmap);
   SDL_FreeCursor(hidden_cursor);
@@ -1533,19 +1606,7 @@ void cursor::draw(render_target* pCanvas, int iX, int iY) {
 #endif
 }
 
-line_sequence::line_sequence() { initialize(); }
-
-void line_sequence::initialize() {
-  width = 1;
-  red = 0;
-  green = 0;
-  blue = 0;
-  alpha = 255;
-  line_elements.clear();
-
-  // We start at 0,0
-  move_to(0.0, 0.0);
-}
+line_sequence::line_sequence() { move_to(0.0, 0.0); }
 
 void line_sequence::move_to(double fX, double fY) {
   line_elements.emplace_back(line_command::move, fX, fY);
@@ -1586,8 +1647,6 @@ void line_sequence::persist(lua_persist_writer* pWriter) const {
 }
 
 void line_sequence::depersist(lua_persist_reader* pReader) {
-  initialize();
-
   pReader->read_uint(red);
   pReader->read_uint(green);
   pReader->read_uint(blue);
@@ -1618,7 +1677,6 @@ void line_sequence::depersist(lua_persist_reader* pReader) {
   }
 }
 
-#ifdef CORSIX_TH_USE_FREETYPE2
 bool freetype_font::is_monochrome() const { return false; }
 
 void freetype_font::free_texture(cached_text* pCacheEntry) const {
@@ -1635,7 +1693,7 @@ void freetype_font::make_texture(render_target* pEventualCanvas,
               pCacheEntry->width * pCacheEntry->height * sizeof(uint32_t));
   uint8_t* pInRow = pCacheEntry->data;
   uint32_t* pOutRow = pPixels;
-  uint32_t iColBase = colour & 0xFFFFFF;
+  uint32_t iColBase = font_colour & 0xFFFFFF;
   for (int iY = 0; iY < pCacheEntry->height;
        ++iY, pOutRow += pCacheEntry->width, pInRow += pCacheEntry->width) {
     for (int iX = 0; iX < pCacheEntry->width; ++iX) {
@@ -1656,5 +1714,3 @@ void freetype_font::draw_texture(render_target* pCanvas,
   SDL_Rect rcDest = {iX, iY, pCacheEntry->width, pCacheEntry->height};
   pCanvas->draw(pCacheEntry->texture, nullptr, &rcDest, 0);
 }
-
-#endif  // CORSIX_TH_USE_FREETYPE2

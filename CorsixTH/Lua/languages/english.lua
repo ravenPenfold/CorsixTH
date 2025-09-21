@@ -43,6 +43,16 @@ adviser.goals.lose.kill = "Kill another %d patients to lose the level!"
 tooltip.staff_window.face = "This person's face - click to open management screen"
 tooltip.staff_window.center_view = "Left click to zoom to staff, right click to cycle through staff members"
 
+-- Improve tooltips in Build Rooms menu
+tooltip.rooms.inflation = "A Doctor uses the Inflation Room to cure patients with Bloaty Head"
+tooltip.rooms.tongue_clinic = "A Doctor uses the Slack Tongue Clinic to cure Slack Tongue"
+tooltip.rooms.fracture_clinic = "A Nurse uses the Fracture Clinic to repair Fractured Bones"
+tooltip.rooms.hair_restoration = "A Doctor uses the Hair Restoration Room to cure Baldness"
+tooltip.rooms.decontamination = "A Doctor uses the Decontamination Shower to cure Serious Radiation"
+tooltip.rooms.ward = "Wards are useful for both diagnosis and treatment. Patients are sent here for observation and also prepare for operations in a Ward with a Nurse"
+tooltip.rooms.research_room = "Doctors with Research skills can discover new drugs and machines in the Research Dept"
+tooltip.objects.reception_desk = "Reception Desk: requires a Receptionist who directs patients to the GP's office"
+
 -- Improve tooltips in Research Screen
 tooltip.research.cure_dec = "Decrease Cure research percentage"
 tooltip.research.cure_inc = "Increase Cure research percentage"
@@ -195,6 +205,7 @@ menu_charts = {
   status        = "  (%1%) STATUS  ",
   graphs        = "  (%1%) GRAPHS  ",
   policy        = "  (%1%) POLICY  ",
+  machine_menu  = "  (%1%) MACHINES MENU",
 }
 
 menu_debug = {
@@ -204,7 +215,6 @@ menu_debug = {
   limit_camera                = "  LIMIT CAMERA  ",
   disable_salary_raise        = "  DISABLE SALARY RAISE  ",
   allow_blocking_off_areas    = "  ALLOW BLOCKING OFF AREAS  ",
-  allow_falling               = "  ALLOW FALLING  ",
   make_debug_fax              = "  MAKE DEBUG FAX  ",
   make_debug_patient          = "  MAKE DEBUG PATIENT  ",
   cheats                      = "  (%1%) CHEATS  ",
@@ -236,6 +246,11 @@ menu_player_count = {
   players_3 = "  3 PLAYERS  ",
   players_4 = "  4 PLAYERS  ",
 }
+
+tooltip.toolbar = {
+  machine_menu = "Machine menu",
+}
+
 adviser = {
   room_forbidden_non_reachable_parts = "Placing the room in this location would result in parts of the hospital not being reachable.",
   warnings = {
@@ -248,6 +263,7 @@ adviser = {
     no_desk_6 = "You have a receptionist, so how about building a reception desk for her to work from?",
     no_desk_7 = "You've built the reception desk, so how about hiring a receptionist? You won't see any patients until you get this sorted out you know!",
     another_desk = "You'll need to build another desk for that new receptionist.",
+    cannot_buy = "You can't buy more of that item!",
     cannot_afford = "You don't have enough money in the bank to hire that person!", -- I can't see anything like this in the original strings
     cannot_afford_2 = "You don't have enough money in the bank to make that purchase!",
     cannot_afford_machine = "You need at least $%1% in the bank to afford a new %2%!",
@@ -268,6 +284,8 @@ adviser = {
     high_prices = "Your charges for %s are high. This will make big profits in the short-term, but ultimately you'll start to drive people away.",
     fair_prices = "Your charges for %s seem fair and balanced.",
     patient_not_paying = "A patient left without paying for %s because it's too expensive!",
+    no_doctor_no_gp_office = "You should build a GP's Office and hire a doctor at some point!",
+    no_gp_office = "You haven't built a GP's Office where your doctors can diagnose the patients!",
   },
   cheats = {
     th_cheat = "Congratulations, you have unlocked cheats!",
@@ -332,7 +350,7 @@ misc = {
   not_yet_implemented = "(not yet implemented)",
   no_heliport = "Either no diseases have been discovered yet, or there is no heliport on this map. It might be that you need to build a reception desk and hire a receptionist",
   cant_treat_emergency = "Your hospital cannot treat this emergency because its disease has not been discovered. Feel free to try again.",
-  epidemics_off = "Epidemics are disabled",
+  epidemics_off = "Epidemics are disabled. No new epidemics will be created",
   epidemics_on = "Epidemics are re-enabled",
   earthquakes_off = "Earthquakes are disabled",
   earthquakes_on = "Earthquakes are re-enabled",
@@ -393,11 +411,13 @@ tooltip.custom_game_window = {
 custom_campaign_window = {
   caption = "Custom Campaign",
   start_selected_campaign = "Start campaign",
+  duplicates_warning = "%d campaign(s) with duplicate names have been hidden",
 }
 
 tooltip.custom_campaign_window = {
   choose_campaign = "Choose a campaign to read more about it",
   start_selected_campaign = "Load the first level of this campaign",
+  duplicates_warning = "See the console window for specific errors",
 }
 
 save_game_window = {
@@ -511,26 +531,34 @@ customise_window = {
   caption = "Custom Settings",
   option_on = "On",
   option_off = "Off",
+  emergency_only = "Emergency Only",
+  regular_patients = "Regular Patients",
+  male_only = "Male Only",
+  male_and_female = "Male and Female",
   back = "Back",
-  movies = "Global Movie Control",
+  movies = "Movies",
   intro = "Play Intro Movie",
-  paused = "Build on Paused",
+  paused = "Build While Paused",
   volume = "Volume Down Hotkey",
   aliens = "Alien Patients",
   fractured_bones = "Fractured Bones",
   average_contents = "Average Contents",
   remove_destroyed_rooms = "Remove destroyed rooms",
+  machine_menu_button = "Machine menu button",
+  enable_screen_shake = "Screen Shake",
 }
 
 tooltip.customise_window = {
-  movies = "Global movie control, this will allow you to disable all the movies",
-  intro = "Turn off or on the intro movie, global movies will need to be on if you want the intro movie to play each time you load CorsixTH",
-  paused = "In Theme Hospital the player would only be allowed to use the top menu if the game was paused. That is the default setting in CorsixTH too, but by turning this on everything is allowed while the game is paused",
-  volume = "If the volume down button is also opening the casebook, turn this on to change the hotkey for the casebook to Shift + C",
-  aliens = "Because of the lack of proper animations we have by default made patients with Alien DNA only come from an emergency. To allow patients with Alien DNA to visit your hospital, other than by an emergency, turn this off",
-  fractured_bones = "Because of a poor animation we have by default made it so there are no female patients with Fractured Bones. To allow female patients with Fractured Bones to visit your hospital, turn this off",
-  average_contents = "If you would like the game to remember what extra objects you usually add when you build rooms, then turn this option on",
-  remove_destroyed_rooms = "If you would like to be able to remove destroyed rooms, for a fee, turn this option on",
+  movies = "Global movie control. This will allow you to enable or disable all movies",
+  intro = "Turn the intro movie on and off. Global movies must be on if you want the intro movie to play each time you launch CorsixTH",
+  paused = "In the original Theme Hospital, the player could only use the top menu while the game was paused. This is the default behaviour in CorsixTH, but turning this option on will allow you to build rooms and pick up objects while the game is paused",
+  volume = "If the volume down button causes the Casebook to open, turn this option on to change the hotkey for the Casebook to Shift + C",
+  aliens = "Due to incomplete animations, patients with Alien DNA will only appear via Emergencies by default. To allow patients with Alien DNA to visit your hospital normally, set this option to Regular Patients",
+  fractured_bones = "Due to poor animation, female patients with Fractured Bones will not appear by default. To allow female patients with Fractured Bones to visit your hospital, set this option to Male and Female",
+  average_contents = "If you would like the game to remember which extra objects you usually add while building rooms, turn this option on",
+  remove_destroyed_rooms = "In the original Theme Hospital, exploded machines made rooms permanently unusable. If you would like to be able to remove destroyed rooms for a fee, turn this option on",
+  machine_menu_button = "If you would like to have a machine menu button in bottom panel, turn this option on. Keep in mind that this button will not be available in small screen resolutions",
+  enable_screen_shake = "Earthquakes will cause the entire screen to shake. If you would prefer the screen to remain still, turn this option off",
   back = "Close this menu and go back to the Settings Menu",
 }
 
@@ -634,6 +662,7 @@ hotkey_window = {
   ingame_panel_status = "Status",
   ingame_panel_charts = "Charts",
   ingame_panel_policy = "Policy",
+  ingame_panel_machineMenu = "Machines Menu",
   ingame_panel_map_alt = "Town Map 2",
   ingame_panel_research_alt = "Research 2",
   ingame_panel_casebook_alt = "Casebook 2",
@@ -767,6 +796,15 @@ errors = {
     full_in_demo = "Sorry, you can't open a full game save with the demo files loaded. Please update your TH Data folder setting.",
   },
   music = "There are playback issues with one or more files in your music directory. Problematic files will be disabled in the jukebox. See the console window for more information.",
+  missing_corsixth_file = "Warning: Could not find file %s, try reinstalling CorsixTH.",
+  missing_th_data_file = "Warning: Could not find file %s, the Theme Hospital data is incomplete.",
+  missing_level_file = "Error: Could not find the chosen level file.",
+  overlay = {
+    incorrect_difficulty = "Overlay difficulty must be easy, full or hard. Current value is ",
+    incorrect_level_number = "Overlay level number must be 1-12. Current value is ",
+    missing_setting = "No difficulty and level number given in overlay field of custom level.",
+  },
+  cannot_restart_missing_files = "Sorry, but this level cannot be restarted because of missing files %s or %s.",
 }
 
 warnings = {
@@ -783,24 +821,25 @@ confirmation = {
   replace_machine_extra_info = "The new machine will have %d strength (currently %d).",
   restart_mapeditor = "Are you sure you want to restart the map editor?",
   quit_mapeditor = "Are you sure you want to quit the map editor?",
+  very_old_save = "There have been a lot of updates to the game since you started. To be sure that all features work as intended would you like to restart this level now?//" ..
+  "Your old save won't be deleted unless you overwrite it.",
 }
 
 information = {
   custom_game = "Welcome to CorsixTH. Have fun with this custom map!",
   no_custom_game_in_demo = "Sorry, but in the demo version you can't play any custom maps.",
   cannot_restart = "Unfortunately this custom game was saved before the restart feature was implemented.",
-  very_old_save = "There have been a lot of updates to the game since you started this level. To be sure that all features work as intended please consider restarting it.",
   level_lost = {
     "Bummer! You failed the level. Better luck next time!",
     "The reason you lost:",
     reputation = "Your reputation fell below %d.",
     balance = "Your bank balance fell below %d.",
     percentage_killed = "You killed more than %d percent of the patients.",
-    cheat = "This was your choice or did you select the wrong button? So you can't even cheat correctly, not that funny huh?",
+    cheat = "Hope you didn't click the Lose Level button by accident!",
     staff_happiness = "Your average staff happiness fell below %d%.",
     patient_happiness = "Your average patient happiness fell below %d%.",
   },
-  cheat_not_possible = "Cannot use that cheat on this level. You even fail to cheat, not that funny huh?",
+  cheat_not_possible = "You cannot use that cheat on this level.",
 }
 
 tooltip.information = {
@@ -873,6 +912,7 @@ cheats_window = {
     decrease_prices = "Decrease prices",
     reset_death_count = "Reset death count",
     max_reputation = "Max reputation",
+    repair_all_machines = "Repair all machines",
   },
   close = "Close",
 }
@@ -898,6 +938,7 @@ tooltip.cheats_window = {
     decrease_prices = "Decrease all prices by 50% (min. 50%)",
     reset_death_count = "Reset the hospital death count to zero",
     max_reputation = "Set the hospital reputation to the maximum",
+    repair_all_machines = "Repairs all machines in the hospital",
   }
 }
 
@@ -926,6 +967,35 @@ tooltip.calls_dispatcher = {
   assigned = "This box is marked if someone is assigned to the corresponding task.",
   close = "Close the calls dispatcher dialog",
 }
+
+machine_menu = {
+  percentage = "%d%",
+  machine = "Machine",
+  remaining_strength = "Remain",
+  total_strength = "Strength",
+  ratio = "Ratio",
+  close = "Close",
+}
+
+tooltip.machine_menu = {
+  sort = "Click to sort by this value.",
+  machine = "List of machines - click machine to open machine's window and scroll to its location",
+  smoking = "This box is marked if the machine is at risk of exploding. Click to buy a new machine.",
+  assigned = "This box is marked if a handyman is assigned to fix corresponding machine. Click to show assigned handyman.",
+  remaining_strength = "This value shows remaining strength of the machine",
+  total_strength = "This value shows total strength of the machine",
+  ratio = "This value shows ratio of remaining strength and total strength",
+  header = {
+    smoking = "Danger Indicator",
+    assigned = "Repair assignment Indicator",
+    machine = "Machine name",
+    remaining_strength = "Remaining Strength of the machines.",
+    total_strength = "Total Strength of the machines.",
+    ratio = "Remaining Strength to Total Strength percentage ratio of the machines.",
+  },
+  close = "Close the machine list dialog",
+}
+
 
 update_window = {
   caption = "Update Available!",
@@ -994,6 +1064,7 @@ tooltip.status = {
 
 options_window.change_resolution = "Change resolution"
 tooltip.options_window.change_resolution = "Change the window resolution to the dimensions entered on the left"
+information.very_old_save = "There have been a lot of updates to the game since you started this level. To be sure that all features work as intended please consider restarting it."
 
 cheats_window.cheats = {
  toggle_infected = show_infected,

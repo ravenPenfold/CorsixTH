@@ -20,16 +20,41 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include <SDL.h>
+#include "config.h"
 
+#include <SDL_stdinc.h>
+#include <ft2build.h>  // IWYU pragma: keep
+// IWYU pragma: no_include "freetype/config/ftheader.h"
+
+#include <algorithm>
+#include <climits>
 #include <cstring>
 #include <exception>
+#include <new>
 
+#include "lua.hpp"
+#include "persist_lua.h"
 #include "th_gfx.h"
 #include "th_gfx_font.h"
+#include "th_gfx_sdl.h"
+#include "th_lua.h"
 #include "th_lua_internal.h"
+#include FT_ERRORS_H
+#include FT_TYPES_H
 
 namespace {
+
+font* luaT_getfont(lua_State* L) {
+  font* p = luaT_touserdata_base<font, bitmap_font, freetype_font>(
+      L, 1, {"bitmap_font", "freetype_font"});
+#ifdef DEBUG
+  if (p != nullptr && dynamic_cast<bitmap_font*>(p) == nullptr &&
+      dynamic_cast<freetype_font*>(p) == nullptr) {
+    std::fprintf(stderr, "font found which is not freetype or bitmap: %p\n", p);
+  }
+#endif
+  return p;
+}
 
 int l_palette_new(lua_State* L) {
   luaT_stdnew<palette>(L);
@@ -198,9 +223,7 @@ int l_spritesheet_hittest(lua_State* L) {
 int l_spritesheet_isvisible(lua_State* L) {
   sprite_sheet* pSheet = luaT_testuserdata<sprite_sheet>(L);
   size_t iSprite = luaL_checkinteger(L, 2);
-  argb_colour oDummy;
-  lua_pushboolean(L,
-                  pSheet->get_sprite_average_colour(iSprite, &oDummy) ? 1 : 0);
+  lua_pushboolean(L, pSheet->is_sprite_visible(iSprite) ? 1 : 0);
   return 1;
 }
 
@@ -216,6 +239,9 @@ int l_bitmap_font_new(lua_State* L) {
 int l_bitmap_font_set_spritesheet(lua_State* L) {
   bitmap_font* pFont = luaT_testuserdata<bitmap_font>(L);
   sprite_sheet* pSheet = luaT_testuserdata<sprite_sheet>(L, 2);
+  // Note: l_freetype_font_set_spritesheet has additional RGB parameters for
+  // the colour.
+
   lua_settop(L, 2);
 
   pFont->set_sprite_sheet(pSheet);
@@ -239,7 +265,6 @@ int l_bitmap_font_set_sep(lua_State* L) {
   return 1;
 }
 
-#ifdef CORSIX_TH_USE_FREETYPE2
 void l_freetype_throw_error_code(lua_State* L, FT_Error e) {
   if (e != FT_Err_Ok) {
     switch (e) {
@@ -266,11 +291,23 @@ int l_freetype_font_new(lua_State* L) {
 }
 
 int l_freetype_font_set_spritesheet(lua_State* L) {
+  // Colour 0 falls back to using the average colour of the sprite sheet.
+  argb_colour colour = 0;
+
   freetype_font* pFont = luaT_testuserdata<freetype_font>(L);
   sprite_sheet* pSheet = luaT_testuserdata<sprite_sheet>(L, 2);
+  if (!lua_isnoneornil(L, 3)) {
+    int red = static_cast<int>(luaL_checkinteger(L, 3));
+    int green = static_cast<int>(luaL_checkinteger(L, 4));
+    int blue = static_cast<int>(luaL_checkinteger(L, 5));
+    red = std::max(0, std::min(255, red));
+    green = std::max(0, std::min(255, green));
+    blue = std::max(0, std::min(255, blue));
+    colour = palette::pack_argb(255, red, green, blue);
+  }
   lua_settop(L, 2);
 
-  l_freetype_throw_error_code(L, pFont->match_bitmap_font(pSheet));
+  l_freetype_throw_error_code(L, pFont->match_bitmap_font(pSheet, colour));
   lua_settop(L, 1);
   return 1;
 }
@@ -297,10 +334,8 @@ int l_freetype_font_clear_cache(lua_State* L) {
   return 0;
 }
 
-#endif
-
 int l_font_get_size(lua_State* L) {
-  font* pFont = luaT_testuserdata<font>(L);
+  font* pFont = luaT_getfont(L);
   size_t iMsgLen;
   const char* sMsg = luaT_checkstring(L, 2, &iMsgLen);
 
@@ -318,7 +353,7 @@ int l_font_get_size(lua_State* L) {
 }
 
 int l_font_draw(lua_State* L) {
-  font* pFont = luaT_testuserdata<font>(L);
+  font* pFont = luaT_getfont(L);
   render_target* pCanvas = nullptr;
   if (!lua_isnoneornil(L, 2)) {
     pCanvas = luaT_testuserdata<render_target>(L, 2);
@@ -366,7 +401,7 @@ int l_font_draw(lua_State* L) {
 }
 
 int l_font_draw_wrapped(lua_State* L) {
-  font* pFont = luaT_testuserdata<font>(L);
+  font* pFont = luaT_getfont(L);
   render_target* pCanvas = nullptr;
   if (!lua_isnoneornil(L, 2)) {
     pCanvas = luaT_testuserdata<render_target>(L, 2);
@@ -413,7 +448,7 @@ int l_font_draw_wrapped(lua_State* L) {
 }
 
 int l_font_draw_tooltip(lua_State* L) {
-  font* pFont = luaT_testuserdata<font>(L);
+  font* pFont = luaT_getfont(L);
   render_target* pCanvas = luaT_testuserdata<render_target>(L, 2);
   size_t iMsgLen;
   const char* sMsg = luaT_checkstring(L, 3, &iMsgLen);
@@ -485,18 +520,17 @@ int l_layers_persist(lua_State* L) {
 }
 
 int l_layers_depersist(lua_State* L) {
-  layers* pLayers = luaT_testuserdata<layers>(L);
+  void* layers_ud = luaT_testuserdata<layers>(L);
   lua_settop(L, 2);
   lua_insert(L, 1);
   lua_persist_reader* pReader =
       static_cast<lua_persist_reader*>(lua_touserdata(L, 1));
 
-  std::memset(pLayers->layer_contents, 0, sizeof(pLayers->layer_contents));
+  layers* ls = new (layers_ud) layers();
   int iNumLayers;
   if (!pReader->read_uint(iNumLayers)) return 0;
   if (iNumLayers > max_number_of_layers) {
-    if (!pReader->read_byte_stream(pLayers->layer_contents,
-                                   max_number_of_layers)) {
+    if (!pReader->read_byte_stream(ls->layer_contents, max_number_of_layers)) {
       return 0;
     }
     if (!pReader->read_byte_stream(nullptr,
@@ -504,8 +538,7 @@ int l_layers_depersist(lua_State* L) {
       return 0;
     }
   } else {
-    if (!pReader->read_byte_stream(pLayers->layer_contents, iNumLayers))
-      return 0;
+    if (!pReader->read_byte_stream(ls->layer_contents, iNumLayers)) return 0;
   }
   return 0;
 }
@@ -551,13 +584,13 @@ int l_cursor_position(lua_State* L) {
 /** Construct the helper structure for making a #THRenderTarget. */
 render_target_creation_params l_surface_creation_params(lua_State* L,
                                                         int iArgStart) {
-  render_target_creation_params oParams;
-  oParams.width = static_cast<int>(luaL_checkinteger(L, iArgStart));
-  oParams.height = static_cast<int>(luaL_checkinteger(L, iArgStart + 1));
+  render_target_creation_params params;
+  params.width = static_cast<int>(luaL_checkinteger(L, iArgStart));
+  params.height = static_cast<int>(luaL_checkinteger(L, iArgStart + 1));
 
-  oParams.fullscreen = false;
-  oParams.present_immediate = false;
-  oParams.direct_zoom = false;
+  params.fullscreen = false;
+  params.present_immediate = false;
+  params.direct_zoom = false;
 
   // Parse string arguments, looking for matching parameter names.
   for (int iArg = iArgStart + 2, iArgCount = lua_gettop(L); iArg <= iArgCount;
@@ -566,47 +599,41 @@ render_target_creation_params l_surface_creation_params(lua_State* L,
     if (sOption[0] == 0) continue;
 
     if (std::strcmp(sOption, "fullscreen") == 0) {
-      oParams.fullscreen = true;
+      params.fullscreen = true;
     }
     if (std::strcmp(sOption, "present immediate") == 0) {
-      oParams.present_immediate = true;
+      params.present_immediate = true;
     }
     if (std::strcmp(sOption, "direct zoom") == 0) {
-      oParams.direct_zoom = true;
+      params.direct_zoom = true;
     }
   }
 
-  return oParams;
+  return params;
 }
 
 int l_surface_new(lua_State* L) {
   lua_remove(L, 1);  // Value inserted by __call
 
-  render_target_creation_params oParams = l_surface_creation_params(L, 1);
-  render_target* pCanvas = luaT_stdnew<render_target>(L);
-  if (pCanvas->create(&oParams)) return 1;
+  render_target_creation_params params = l_surface_creation_params(L, 1);
+  try {
+    luaT_stdnew<render_target>(L, luaT_environindex, false, params);
+  } catch (const std::exception& ex) {
+    return luaL_error(L, "Could not create render target: %s", ex.what());
+  }
 
-  lua_pushnil(L);
-  lua_pushstring(L, pCanvas->get_last_error());
-  return 2;
+  return 1;
 }
 
 int l_surface_update(lua_State* L) {
   render_target* pCanvas = luaT_testuserdata<render_target>(L);
-  render_target_creation_params oParams = l_surface_creation_params(L, 2);
-  if (pCanvas->update(&oParams)) {
+  render_target_creation_params params = l_surface_creation_params(L, 2);
+  if (pCanvas->update(params)) {
     lua_pushnil(L);
     return 1;
   }
 
   lua_pushstring(L, pCanvas->get_last_error());
-  return 1;
-}
-
-int l_surface_destroy(lua_State* L) {
-  render_target* pCanvas = luaT_testuserdata<render_target>(L);
-  pCanvas->end_frame();
-  pCanvas->destroy();
   return 1;
 }
 
@@ -679,8 +706,8 @@ int l_surface_rect(lua_State* L) {
 
 int l_surface_screenshot(lua_State* L) {
   render_target* pCanvas = luaT_testuserdata<render_target>(L);
-  const char* sFile = luaL_checkstring(L, 2);
-  if (pCanvas->take_screenshot(sFile)) {
+  const char* file_path = luaL_checkstring(L, 2);
+  if (pCanvas->take_screenshot(file_path)) {
     lua_settop(L, 1);
     return 1;
   }
@@ -820,13 +847,13 @@ int l_line_persist(lua_State* L) {
 }
 
 int l_line_depersist(lua_State* L) {
-  line_sequence* pLine = luaT_testuserdata<line_sequence>(L);
+  void* line_ud = luaT_testuserdata<line_sequence>(L);
   lua_settop(L, 2);
   lua_insert(L, 1);
   lua_persist_reader* pReader =
       static_cast<lua_persist_reader*>(lua_touserdata(L, 1));
-  new (pLine) line_sequence();
-  pLine->depersist(pReader);
+  line_sequence* line = new (line_ud) line_sequence();
+  line->depersist(pReader);
   return 0;
 }
 
@@ -889,7 +916,6 @@ void lua_register_gfx(const lua_register_state* pState) {
     lcb.add_function(l_bitmap_font_set_sep, "setSeparation");
   }
 
-#ifdef CORSIX_TH_USE_FREETYPE2
   // FreeTypeFont
   {
     lua_class_binding<freetype_font> lcb(pState, "freetype_font",
@@ -902,7 +928,6 @@ void lua_register_gfx(const lua_register_state* pState) {
     lcb.add_function(l_freetype_font_get_copyright, "getCopyrightNotice");
     lcb.add_function(l_freetype_font_clear_cache, "clearCache");
   }
-#endif
 
   // Layers
   {
@@ -928,7 +953,6 @@ void lua_register_gfx(const lua_register_state* pState) {
     lua_class_binding<render_target> lcb(pState, "surface", l_surface_new,
                                          lua_metatable::surface);
     lcb.add_function(l_surface_update, "update");
-    lcb.add_function(l_surface_destroy, "destroy");
     lcb.add_function(l_surface_fill_black, "fillBlack");
     lcb.add_function(l_surface_start_frame, "startFrame");
     lcb.add_function(l_surface_end_frame, "endFrame");

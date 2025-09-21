@@ -22,15 +22,18 @@ SOFTWARE.
 
 #ifndef CORSIX_TH_TH_GFX_FONT_H_
 #define CORSIX_TH_TH_GFX_FONT_H_
-#include "th_gfx.h"
-#ifdef CORSIX_TH_USE_FREETYPE2
-#include <ft2build.h>
+#include "config.h"
+
+#include <SDL_render.h>
+#include <ft2build.h>  // IWYU pragma: keep
+// IWYU pragma: no_include "freetype/config/ftheader.h"
+
+#include <climits>
+
+#include "th_gfx_sdl.h"
 #include FT_FREETYPE_H
-#endif
-
-class render_target;
-
-class sprite_sheet;
+#include FT_IMAGE_H
+#include FT_TYPES_H
 
 enum class text_alignment {
   left = 0,
@@ -150,12 +153,11 @@ class bitmap_font final : public font {
       text_alignment eAlign = text_alignment::left) const override;
 
  private:
-  sprite_sheet* sheet;
-  int letter_spacing;
-  int line_spacing;
+  sprite_sheet* sheet{nullptr};
+  int letter_spacing{};
+  int line_spacing{};
 };
 
-#ifdef CORSIX_TH_USE_FREETYPE2
 //! Adaptor around the FreeType2 library to a THFont.
 /*!
     Due to the relatively high cost of rendering a message with FreeType, this
@@ -205,9 +207,12 @@ class freetype_font final : public font {
       Note that the matching is done on a best-effort basis, and will likely
       not be perfect. This must be called after setFace().
 
-      @param pBitmapFontSpriteSheet The sprite sheet of the bitmap font.
+      @param font_spritesheet The sprite sheet of the bitmap font.
+      @param colour Colour to use for the font. Colour 0 falls back to
+          deriving the colour from the sprite sheet.
   */
-  FT_Error match_bitmap_font(sprite_sheet* pBitmapFontSpriteSheet);
+  FT_Error match_bitmap_font(sprite_sheet* font_spritesheet,
+                             argb_colour colour);
 
   //! Set the ideal character size using pixel values.
   /*!
@@ -277,11 +282,11 @@ class freetype_font final : public font {
 
   static FT_Library freetype_library;
   static int freetype_init_count;
-  static const int cache_size_log2 = 7;
-  FT_Face font_face;
-  argb_colour colour;
-  bool is_done_freetype_init;
-  mutable cached_text cache[1 << cache_size_log2];
+  static constexpr int cache_size_log2{7};
+  FT_Face font_face{nullptr};
+  argb_colour font_colour{0};
+  bool is_done_freetype_init{false};
+  mutable cached_text cache[1 << cache_size_log2]{};
 
   // The following five methods are implemented by the rendering engine.
 
@@ -326,6 +331,5 @@ class freetype_font final : public font {
   void draw_texture(render_target* pCanvas, cached_text* pCacheEntry, int iX,
                     int iY) const;
 };
-#endif  // CORSIX_TH_USE_FREETYPE2
 
 #endif  // CORSIX_TH_TH_GFX_FONT_H_

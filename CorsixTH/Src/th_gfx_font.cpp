@@ -24,22 +24,22 @@ SOFTWARE.
 
 #include "config.h"
 
-#include "th_strings.h"
-#ifdef CORSIX_TH_USE_FREETYPE2
-#include FT_GLYPH_H
-#include <map>
-#include <vector>
-#endif
-#include <algorithm>
-#include <cstdio>
-#include <cstring>
-#include <stdexcept>
+#include <ft2build.h>  // IWYU pragma: keep
+// IWYU pragma: no_include "freetype/config/ftheader.h"
 
-bitmap_font::bitmap_font() {
-  sheet = nullptr;
-  letter_spacing = 0;
-  line_spacing = 0;
-}
+#include "th_strings.h"
+#include FT_FREETYPE_H
+#include FT_ERRORS_H
+#include FT_GLYPH_H
+#include FT_IMAGE_H
+#include FT_TYPES_H
+#include <algorithm>
+#include <cstring>
+#include <map>
+#include <utility>
+#include <vector>
+
+bitmap_font::bitmap_font() = default;
 
 void bitmap_font::set_sprite_sheet(sprite_sheet* pSpriteSheet) {
   sheet = pSpriteSheet;
@@ -179,13 +179,10 @@ text_layout bitmap_font::draw_text_wrapped(render_target* pCanvas,
   return oDrawArea;
 }
 
-#ifdef CORSIX_TH_USE_FREETYPE2
 FT_Library freetype_font::freetype_library = nullptr;
 int freetype_font::freetype_init_count = 0;
 
 freetype_font::freetype_font() {
-  font_face = nullptr;
-  is_done_freetype_init = false;
   for (cached_text* pEntry = cache; pEntry != cache + (1 << cache_size_log2);
        ++pEntry) {
     pEntry->message = nullptr;
@@ -258,9 +255,9 @@ FT_Error freetype_font::set_face(const uint8_t* pData, size_t iLength) {
   return iError;
 }
 
-FT_Error freetype_font::match_bitmap_font(
-    sprite_sheet* pBitmapFontSpriteSheet) {
-  if (pBitmapFontSpriteSheet == nullptr) return FT_Err_Invalid_Argument;
+FT_Error freetype_font::match_bitmap_font(sprite_sheet* font_spritesheet,
+                                          argb_colour colour) {
+  if (font_spritesheet == nullptr) return FT_Err_Invalid_Argument;
 
   // Try to take the size and colour of a standard character (em is generally
   // the standard font character, but for fonts which only have numbers, zero
@@ -268,10 +265,12 @@ FT_Error freetype_font::match_bitmap_font(
   for (const char* sCharToTry = "M0"; *sCharToTry; ++sCharToTry) {
     int iWidth;
     int iHeight;
+    argb_colour sheet_colour = 0;
     unsigned int iSprite = *sCharToTry - 31;
-    if (pBitmapFontSpriteSheet->get_sprite_size(iSprite, &iWidth, &iHeight) &&
-        pBitmapFontSpriteSheet->get_sprite_average_colour(iSprite, &colour) &&
+    if (font_spritesheet->get_sprite_size(iSprite, &iWidth, &iHeight) &&
+        font_spritesheet->get_sprite_average_colour(iSprite, &sheet_colour) &&
         iWidth > 1 && iHeight > 1) {
+      font_colour = (colour == 0) ? sheet_colour : colour;
       return set_ideal_character_size(iWidth, iHeight);
     }
   }
@@ -280,12 +279,13 @@ FT_Error freetype_font::match_bitmap_font(
   int iWidthSum = 0;
   int iHeightSum = 0;
   int iAverageNum = 0;
-  for (size_t i = 0; i < pBitmapFontSpriteSheet->get_sprite_count(); ++i) {
+  argb_colour sheet_colour = 0;
+  for (size_t i = 0; i < font_spritesheet->get_sprite_count(); ++i) {
     int iWidth;
     int iHeight;
-    pBitmapFontSpriteSheet->get_sprite_size_unchecked(i, &iWidth, &iHeight);
+    font_spritesheet->get_sprite_size_unchecked(i, &iWidth, &iHeight);
     if (iWidth <= 1 || iHeight <= 1) continue;
-    if (!pBitmapFontSpriteSheet->get_sprite_average_colour(i, &colour))
+    if (!font_spritesheet->get_sprite_average_colour(i, &sheet_colour))
       continue;
     iWidthSum += iWidth;
     iHeightSum += iHeight;
@@ -293,6 +293,7 @@ FT_Error freetype_font::match_bitmap_font(
   }
   if (iAverageNum == 0) return FT_Err_Divide_By_Zero;
 
+  font_colour = (colour == 0) ? sheet_colour : colour;
   return set_ideal_character_size((iWidthSum + iAverageNum / 2) / iAverageNum,
                                   (iHeightSum + iAverageNum / 2) / iAverageNum);
 }
@@ -575,7 +576,7 @@ text_layout freetype_font::draw_text_wrapped(render_target* pCanvas,
           mapGlyphs[decode_utf8(sLastChar, sMessageEnd)];
       iLineWidth = vCharPositions[sLastChar - sMessage].x +
                    oLastGlyph.metrics.horiBearingX + oLastGlyph.metrics.width;
-      if ((iLineWidth >> 6) < iWidth) {
+      if ((iLineWidth >> 6) < iWidth && eAlign != text_alignment::left) {
         iAlignDelta =
             ((iWidth * 64 - iLineWidth) * static_cast<int>(eAlign)) / 2;
       }
@@ -743,5 +744,3 @@ void freetype_font::render_gray(cached_text* pCacheEntry, FT_Bitmap* pBitmap,
     }
   }
 }
-
-#endif  // CORSIX_TH_USE_FREETYPE2

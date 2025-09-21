@@ -23,7 +23,8 @@ self = false
 globals = { -- Globals
             "_A", "_S",
             "corsixth",
-            "action_queue_leave_bench", "class", "compare_tables",
+            "action_queue_leave_bench", "class", "compare_tables", "DrawFlags",
+            "DrawingLayers",
             "destrict", "flag_clear", "flag_isset", "flag_set", "flag_toggle",
             "lfs", "list_to_set", "loadfile_envcall", "loadstring_envcall",
             "permanent", "print_table", "rangeMapLookup", "rnc",
@@ -33,7 +34,7 @@ globals = { -- Globals
 
             -- Game classes
             "AIHospital", "AnimationManager", "AnimationEffect", "App", "Audio",
-            "CallsDispatcher", "Cheats", "ChildClass", "Command", "Door", "DrawFlags",
+            "CallsDispatcher", "Cheats", "ChildClass", "Command", "Door",
             "DummyRootNode", "Earthquake", "EndConditions", "Entity", "EntityMap",
             "Epidemic", "FileSystem", "FileTreeNode", "FilteredFileTreeNode", "GameUI",
             "Graphics", "GrimReaper", "Hospital", "Humanoid", "HumanoidRawWalk",
@@ -54,7 +55,7 @@ globals = { -- Globals
             "UIHotkeyAssignKeyPane", "UIInformation", "UIJukebox", "UILoadGame",
             "UILoadMap", "UILuaConsole", "UIMachine", "UIMakeDebugPatient",
             "UIMainMenu", "UIMapEditor", "UIMenuBar", "UIMenuList",
-            "UIMessage", "UINewGame", "UIOptions", "UIPatient",
+            "UIMessage", "UINewGame", "UIOptions", "UIPatient", "UIMachineMenu",
             "UIPlaceObjects", "UIPlaceStaff", "UIPolicy", "UIProgressReport",
             "UIQueue", "UIQueuePopup", "UIResizable", "UIResearch",
             "UIResolution", "UISaveGame", "UISaveMap", "UIScrollSpeed",
@@ -75,6 +76,7 @@ globals = { -- Globals
 
             -- Math extensions
             "math.n_random", "math.round", "math.randomdump", "math.t_random",
+            "math.p_random",
 
             -- Unit Tests
             "assertion_matches"

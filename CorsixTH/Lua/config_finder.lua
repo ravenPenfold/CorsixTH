@@ -124,6 +124,8 @@ local config_defaults = {
   disable_fractured_bones_females = true,
   enable_avg_contents = false,
   remove_destroyed_rooms = false,
+  machine_menu_button = true,
+  enable_screen_shake = true,
   audio_frequency = 22050,
   audio_channels = 2,
   audio_buffer_size = 2048,
@@ -140,7 +142,6 @@ local config_defaults = {
   allow_blocking_off_areas = false,
   direct_zoom = nil,
   new_machine_extra_info = true,
-  debug_falling = false,
   player_name = [[]],
 }
 
@@ -236,8 +237,6 @@ local string_01 = [=[
 
 -------------------------------------------------------------------------------
 -- Audio global on/off switch.
--- Note that audio will also be disabled if CorsixTH was compiled without
--- the SDL_mixer library.
 --]=] .. '\n' ..
 'audio = ' .. tostring(config_values.audio) .. '\n' .. [=[
 
@@ -394,7 +393,19 @@ local string_01 = [=[
 -- By default destroyed rooms can't be removed. If you would like the game to
 -- give you the option of removing a destroyed room change this option to true.
 --]=] .. '\n' ..
-'remove_destroyed_rooms = ' .. tostring(config_values.remove_destroyed_rooms) .. '\n' .. [=[]=]
+'remove_destroyed_rooms = ' .. tostring(config_values.remove_destroyed_rooms) .. '\n' .. [=[
+
+-------------------------------------------------------------------------------
+-- By default machine menu is shown in a bottom panel. If you would like the
+-- game to hide it change this option to false.
+--]=] .. '\n' ..
+'machine_menu_button = ' .. tostring(config_values.machine_menu_button) .. '\n' .. [=[
+
+-------------------------------------------------------------------------------
+-- By default the entire screen will shake during earthquakes. If you would
+-- like the game to keep the screen stationary, change this option to false.
+--]=] .. '\n' ..
+'enable_screen_shake = ' .. tostring(config_values.enable_screen_shake) .. '\n' .. [=[]=]
 
 local string_02 = [=[
 
@@ -468,6 +479,15 @@ screenshots = nil -- [[X:\ThemeHospital\Screenshots]]
 --
 audio_music = nil -- [[X:\ThemeHospital\Music]]
 
+-------------------------------------------------------------------------------
+-- SoundFont: CorsixTH uses the FluidR3 SoundFont by default for playing MIDI music.
+-- Windows users, and other OS versions compiled with the FluidSynth software
+-- synthesiser can specify their own SoundFont file below (.sf2 or .sf3).
+-- Mac(OS) Source Ports build users, and OS versions compiled with TiMidity
+-- won't see any effect from this option. See our Wiki for alternative options.
+--
+soundfont = nil -- [[X:\ThemeHospital\FluidR3.sf3]]
+
 ------------------------------- SPECIAL SETTINGS ------------------------------
 -- These settings can only be changed here
 -------------------------------------------------------------------------------
@@ -487,13 +507,6 @@ audio_music = nil -- [[X:\ThemeHospital\Music]]
 -- and a debug menu will be visible.
 --]=] .. '\n' ..
 'debug = ' .. tostring(config_values.debug) .. '\n' .. [=[
-
--- Experimental setting for falling patients. (debug only!)
--- CorsixTH does not yet have reliable handling for falling actions and enabling it
--- could cause dropped action queues or undesired bugs. You should leave this setting
--- off unless you're developing with it
---]=] .. '\n' ..
-'debug_falling = ' .. tostring(config_values.debug_falling) .. '\n' .. [=[
 
 -- If set to true, the FPS, Lua memory usage, and entity count will be shown
 -- in the dynamic information bar. Note that setting this to true also turns
@@ -614,6 +627,7 @@ local hotkeys_defaults = {
   ingame_panel_status = "f7",
   ingame_panel_charts = "f8",
   ingame_panel_policy = "f9",
+  ingame_panel_machineMenu = "f10",
   ingame_panel_map_alt = "t",
   ingame_panel_research_alt = "r",
   ingame_panel_casebook_alt = "c",
@@ -773,6 +787,7 @@ if hotkeys_needs_rewrite and TheApp then
 'ingame_panel_status = ' .. hotkeys_values.ingame_panel_status .. '\n' ..
 'ingame_panel_charts = ' .. hotkeys_values.ingame_panel_charts .. '\n' ..
 'ingame_panel_policy = ' .. hotkeys_values.ingame_panel_policy .. '\n' ..
+'ingame_panel_machineMenu = ' .. hotkeys_values.ingame_panel_machineMenu .. '\n' ..
 'ingame_panel_map_alt = ' .. hotkeys_values.ingame_panel_map_alt .. '\n' ..
 'ingame_panel_research_alt = ' .. hotkeys_values.ingame_panel_research_alt .. '\n' ..
 'ingame_panel_casebook_alt = ' .. hotkeys_values.ingame_panel_casebook_alt .. '\n' ..

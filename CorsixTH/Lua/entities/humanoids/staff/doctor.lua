@@ -173,7 +173,7 @@ function Doctor:updateSkill(consultant, trait, amount)
       if self:getRoom().room_info.id == "training" then
         self:setNextAction(self:getRoom():createLeaveAction())
         self:queueAction(MeanderAction())
-        self.last_room = nil
+        self.last_room = nil -- Consultant no longer needs to return to this room
       end
       self:updateStaffTitle()
     end
@@ -239,6 +239,20 @@ function Doctor:setCrazy(crazy)
         self.is_crazy = false
       end
     end
+  end
+end
+
+function Doctor:onPickup()
+  Staff.onPickup(self)
+  self:resetSurgeonState()
+end
+
+-- Function resets "Surgeon" state for Doctor.
+-- Useful for case when on picking up Doctor from Operating Theatre
+-- we need to switching him back to regular clothes and type.
+function Doctor:resetSurgeonState()
+  if self.humanoid_class == "Surgeon" then
+    self:setType("Doctor")
   end
 end
 

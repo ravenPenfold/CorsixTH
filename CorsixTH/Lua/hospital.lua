@@ -75,6 +75,8 @@ function Hospital:Hospital(world, avail_rooms, name)
   -- epidemics. If epidemic_limit = 1 then only one epidemic can exist at a
   -- time either in the futures pool or as a current epidemic.
   self.concurrent_epidemic_limit = level_config.gbv.EpidemicConcurrentLimit or 1
+  -- For Cheat - flag determines possibility of epidemics
+  self.epidemics_disabled = false
 
   -- Initial values
   self.interest_rate = interest_rate_numerator / 10000
@@ -156,8 +158,8 @@ function Hospital:Hospital(world, avail_rooms, name)
   self:unconditionalChangeReputation(0) -- Reset self.has_impressive_reputation
 
   self.sodas_sold = 0
-  self.num_vips_ty  = 0 -- used to count how many VIP visits in the year for an award
-  self.pleased_vips_ty  = 0
+  self.num_vips_ty = 0 -- used to count how many VIP visits in the year for an award
+  self.pleased_vips_ty = 0
   self.num_cured_ty = 0
   self.not_cured_ty = 0
   self.num_visitors_ty = 0
@@ -684,11 +686,11 @@ function Hospital:afterLoad(old, new)
   end
 
   -- Update other objects in the hospital (added in version 106).
-  if self.epidemic then self.epidemic.afterLoad(old, new) end
+  if self.epidemic then self.epidemic:afterLoad(old, new) end
   for _, future_epidemic in ipairs(self.future_epidemics_pool) do
-    future_epidemic.afterLoad(old, new)
+    future_epidemic:afterLoad(old, new)
   end
-  self.research.afterLoad(old, new)
+  self.research:afterLoad(old, new)
 end
 
 --! Count the number of patients in the hospital.
@@ -1020,7 +1022,8 @@ function Hospital:onEndMonth()
   self.research:checkAutomaticDiscovery(self.world:date():monthOfGame())
 
   -- Add some interesting statistics.
-  self.statistics[self.world:date():monthOfGame() + 1] = {
+  local newMonth = self.world:date():monthOfGame() + 1
+  self.statistics[newMonth] = {
     money_in = self.money_in,
     money_out = self.money_out,
     wages = wages,
@@ -1076,7 +1079,11 @@ end
 --! Called at the end of each year
 function Hospital:onEndYear()
   self.sodas_sold = 0
-  self.num_vips_ty  = 0
+  self.num_vips_ty = 0
+  self.pleased_vips_ty = 0
+  self.num_cured_ty = 0
+  self.not_cured_ty = 0
+  self.num_visitors_ty = 0
   self.num_deaths_this_year = 0
 
   self.has_impressive_reputation = true
@@ -1120,7 +1127,7 @@ function Hospital:createEmergency(emergency)
     self:makeEmergencyStartFax()
     return -- successfully created
   end
-  return "no heliport"
+  return "no_heliport"
 end
 
 -- Called when the timer runs out during an emergency or when all emergency patients are cured or dead.
@@ -1172,6 +1179,8 @@ function Hospital:spawnContagiousPatient()
     @return non_visuals (table) table of available non-visual diseases or
       false if the patient cannot be spawned.
     @return message (optional string) The error message that may be caused by using cheats.]]
+  if self.epidemics_disabled then return false, _S.misc.epidemics_off end
+
   local function get_available_contagious_diseases()
     local contagious = {}
     for _, disease in ipairs(self.world.available_diseases) do
@@ -1183,7 +1192,7 @@ function Hospital:spawnContagiousPatient()
   end
 
   if self:hasStaffedDesk() then
-    local patient = self.world:newEntity("Patient", 2)
+    local patient = self.world:newEntity("Patient", 2, 1)
     local contagious_diseases = get_available_contagious_diseases()
     if #contagious_diseases > 0 then
       local disease = contagious_diseases[math.random(1,#contagious_diseases)]
@@ -1246,11 +1255,35 @@ function Hospital:manageEpidemics()
   end
 end
 
+--! Cancel ongoing and future epidemics.
+--!param disease (table) Optional, if specified only epidemics of a certain disease
+-- will be cancelled.
+function Hospital:cancelEpidemics(disease)
+  local function cancelEpidemic(epidemic)
+    if disease and disease ~= epidemic.disease then return false end
+    epidemic:cancelEpidemic()
+    return true
+  end
+  -- Cancel ongoing epidemic
+  if self.epidemic ~= nil then
+    if cancelEpidemic(self.epidemic) then self.epidemic = nil end
+  end
+  -- Cancel not revealed epidemics
+  if self.future_epidemics_pool then
+    local future_epidemics = self.future_epidemics_pool
+    for i=#future_epidemics, 1, -1 do
+      if cancelEpidemic(future_epidemics[i]) then
+        table.remove(self.future_epidemics_pool, i)
+      end
+    end
+  end
+end
+
 --[[ Determines if a patient is contagious and then attempts to add them the
  appropriate epidemic if so.
  @param patient (Patient) patient to determine if contagious]]
 function Hospital:determineIfContagious(patient)
-  if self.epidemics_off or patient.is_emergency or not patient.disease.contagious then
+  if self.epidemics_disabled or patient.is_emergency or not patient.disease.contagious then
     return false
   end
   -- ContRate treated like a percentage with ContRate% of patients with
@@ -1282,11 +1315,11 @@ function Hospital:addToEpidemic(patient)
   local epidemic = self.epidemic
   -- Don't add a new contagious patient if the player is trying to cover up
   -- an existing epidemic - not really fair
-  if epidemic and not epidemic.coverup_in_progress and
+  if epidemic and not epidemic.coverup_selected and
       (patient.disease == epidemic.disease) then
     epidemic:addContagiousPatient(patient)
   elseif self.future_epidemics_pool and
-      not (epidemic and epidemic.coverup_in_progress) then
+      not (epidemic and epidemic.coverup_selected) then
     local added = false
     for _, future_epidemic in ipairs(self.future_epidemics_pool) do
       if future_epidemic.disease == patient.disease then
@@ -1508,7 +1541,7 @@ function Hospital:initStaff()
         added_staff = false
       end
       if added_staff then
-        local staff = self.world:newEntity(profile.humanoid_class, 2)
+        local staff = self.world:newEntity(profile.humanoid_class, 2, 2)
         staff:setProfile(profile)
 
         -- Identify a safe starting place and
@@ -2505,4 +2538,8 @@ end
 
 --! The UI parts of earthquake ticks
 function Hospital:tickEarthquake(stage)
+end
+
+--! Give advice that a patient is waiting for the player to build a GP's office
+function Hospital:adviseNoGPOffice()
 end

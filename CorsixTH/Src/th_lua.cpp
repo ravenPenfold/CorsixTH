@@ -32,7 +32,9 @@ SOFTWARE.
 #endif
 
 #include "bootstrap.h"
+#include "lua.hpp"
 #include "th.h"
+#include "th_lua.h"
 #include "th_lua_internal.h"
 
 const char* update_check_url =
@@ -237,7 +239,7 @@ int l_load_strings(lua_State* L) {
 }
 
 int get_api_version() {
-#include "../Lua/api_version.lua"
+#include "../Lua/api_version.lua"  // IWYU pragma: keep
 }
 
 int l_get_compile_options(lua_State* L) {
@@ -247,13 +249,6 @@ int l_get_compile_options(lua_State* L) {
   // Report architecture
   lua_pushliteral(L, CORSIX_TH_ARCH);
   lua_setfield(L, -2, "arch");
-
-#ifdef CORSIX_TH_USE_SDL_MIXER
-  lua_pushboolean(L, 1);
-#else
-  lua_pushboolean(L, 0);
-#endif
-  lua_setfield(L, -2, "audio");
 
 #ifdef WITH_UPDATE_CHECK
   lua_pushboolean(L, 1);
@@ -279,6 +274,12 @@ int l_get_compile_options(lua_State* L) {
 
   lua_pushinteger(L, get_api_version());
   lua_setfield(L, -2, "api_version");
+
+#ifdef CORSIX_TH_FONT
+  // Set default value of font file
+  lua_pushliteral(L, CORSIX_TH_FONT);
+  lua_setfield(L, -2, "font");
+#endif
 
   return 1;
 }
@@ -372,6 +373,12 @@ void luaT_execute_loadstring(lua_State* L, const char* sLuaString) {
 void luaT_execute(lua_State* L, const char* sLuaString) {
   luaT_execute_loadstring(L, sLuaString);
   lua_call(L, 0, LUA_MULTRET);
+}
+
+void preload_lua_package(lua_State* L, const char* name, lua_CFunction fn) {
+  luaT_execute(
+      L, std::string("package.preload.").append(name).append(" = ...").c_str(),
+      fn);
 }
 
 void luaT_push(lua_State* L, lua_CFunction f) { luaT_pushcfunction(L, f); }

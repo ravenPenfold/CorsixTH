@@ -55,9 +55,10 @@ function UIPlaceObjects:UIPlaceObjects(ui, object_list, pay_for)
   self.width = 186
   self.height = 167 + #object_list * 29
   self:setDefaultPosition(0.9, 0.1)
+  local selected_label_color = { red = 40, green = 40, blue = 250 }
   self.panel_sprites = app.gfx:loadSpriteTable("QData", "Req05V", true)
-  self.white_font = app.gfx:loadFont("QData", "Font01V")
-  self.blue_font = app.gfx:loadFont("QData", "Font02V")
+  self.white_font = app.gfx:loadFontAndSpriteTable("QData", "Font01V")
+  self.blue_font = app.gfx:loadFontAndSpriteTable("QData", "Font02V", nil, nil, 0, 0, selected_label_color)
   self.title_text = _S.rooms_short.corridor_objects
   self.desc_text = _S.place_objects_window.place_objects_in_corridor
 
@@ -505,9 +506,9 @@ function UIPlaceObjects:placeObject(dont_close_if_empty)
     end
     -- Some objects (e.g. the plant) uses this flag to avoid doing stupid things when picked up.
     real_obj.picked_up = false
-    -- Machines may have smoke, recalculate it to ensure the animation is in the correct state
-    if real_obj.strength then
-      real_obj:calculateSmoke(room)
+    if real_obj:isMachine() then
+      -- Machines may have some state like smoke and etc. Update it.
+      real_obj:placed(room)
     end
     if class.is(real_obj, Machine) then
       real_obj:setHandymanRepairPosition(self.object_orientation)

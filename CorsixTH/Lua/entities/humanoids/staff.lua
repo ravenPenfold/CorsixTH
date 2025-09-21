@@ -456,6 +456,14 @@ function Staff:setPickup(ui, window_to_close)
   end
 end
 
+function Staff:onPickup()
+  self:setDynamicInfoText("")
+  -- picking up staff was not canceling moods in all cases see issue 1642
+  -- as you would expect room:onHumanoidLeave(humanoid) to clear them!
+  self:setMood("idea3", "deactivate")
+  self:setMood("reflexion", "deactivate")
+end
+
 function Staff:onPlaceInCorridor()
   local world = self.world
   local notify_object = world:getObjectToNotifyOfOccupants(self.tile_x, self.tile_y)
@@ -501,7 +509,22 @@ function Staff:adviseWrongPersonForThisRoom()
   end
 end
 
--- Function to decide if staff currently has nothing to do and can be called to a room where he's needed
+--! Check whether staff are meandering
+--!return true if staff currently has a meander action
+function Staff:isMeandering()
+  if #self.action_queue < 2 then return false end
+
+  -- "meander" action always insert "move" or "idle" action before itself.
+  -- so when humanoid "meandering" his action queue usually looks like:
+  -- [1 idle, 2 meander] or [1 walk, 2 meander].
+  local idle_is_first = self.action_queue[1].name == "idle"
+  local walk_is_first = self.action_queue[1].name == "walk"
+  local meander_is_second = self.action_queue[2].name == "meander"
+
+  return (idle_is_first or walk_is_first) and meander_is_second
+end
+
+-- Function to decide if staff currently has nothing to do and can be called to a room where they're needed
 function Staff:isIdle()
   -- Make sure we're not in an undesired state
   if not self.hospital or self.fired then
@@ -530,38 +553,25 @@ function Staff:isIdle()
     end
 
     -- For handyman - just check the on_call flag
-    if self.humanoid_class == "Handyman" and not self.on_call then
-      return true
-    end
+    if self.humanoid_class == "Handyman" then return not self.on_call end
 
     -- For other staff...
+    -- Staff member might be leaving
+    if self:getCurrentAction().is_leaving then return false end
+
     -- in regular rooms (diagnosis / treatment), if no patient is in sight
     -- or if the only one in sight is actually leaving.
-    if self.humanoid_class ~= "Handyman" and room.door.queue:patientSize() == 0 and
-        not self:getCurrentAction().is_leaving and
-        not (room.door.reserved_for and class.is(room.door.reserved_for, Patient)) then
-      if room:getPatientCount() == 0 then
-        return true
-      else
-        -- It might still be the case that the patient is leaving
-        if room:getPatient():isLeaving() then
-          return true
-        end
-      end
-    end
+    return not room:isRoomInDemand()
   else
-    -- In the corridor and not on_call (watering or going to room), the staff is free
-    -- unless going back to the training room or research department.
-    local x, y = self:getCurrentAction().x, self:getCurrentAction().y
-    if x then
-      room = self.world:getRoom(x, y)
-      if room and (room.room_info.id == "training" or room.room_info.id == "research") then
-        return false
-      end
+    -- In the corridor and not on_call (e.g. watering or going to room).
+    -- The staff is free, unless going back to the training/research.
+    room = self.last_room
+    if room and (room.room_info.id == "training" or room.room_info.id == "research") then
+      return false
     end
+
     return true
   end
-  return false
 end
 
 -- Makes the staff member request a raise of 10%, or a wage exactly in the middle of their current and a fair one, whichever is more.
@@ -709,12 +719,12 @@ function Staff:afterLoad(old, new)
     return
   end
 
+  if old < 213 then
+    self.mood_marker = 2
+  end
+
   self:updateDynamicInfo()
   Humanoid.afterLoad(self, old, new)
-end
-
-function Staff:getDrawingLayer()
-  return 4
 end
 
 --! Estimate staff service quality based on skills, restfulness (inverse of fatigue) and happiness.
